@@ -1,0 +1,17 @@
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\bin\Debug\net8.0\InventoryAdmin.Infrastructure.deps.json
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\bin\Debug\net8.0\InventoryAdmin.Infrastructure.runtimeconfig.json
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\bin\Debug\net8.0\InventoryAdmin.Infrastructure.dll
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\bin\Debug\net8.0\InventoryAdmin.Infrastructure.pdb
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\bin\Debug\net8.0\InventoryAdmin.Domain.dll
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\bin\Debug\net8.0\InventoryAdmin.Domain.pdb
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\InventoryAdmin.Infrastructure.csproj.AssemblyReference.cache
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\InventoryAdmin.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\InventoryAdmin.Infrastructure.AssemblyInfoInputs.cache
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\InventoryAdmin.Infrastructure.AssemblyInfo.cs
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\InventoryAdmin.Infrastructure.csproj.CoreCompileInputs.cache
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\Inventor.3F737886.Up2Date
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\InventoryAdmin.Infrastructure.dll
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\refint\InventoryAdmin.Infrastructure.dll
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\InventoryAdmin.Infrastructure.pdb
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\InventoryAdmin.Infrastructure.genruntimeconfig.cache
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Infrastructure\obj\Debug\net8.0\ref\InventoryAdmin.Infrastructure.dll

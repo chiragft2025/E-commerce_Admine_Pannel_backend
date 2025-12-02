@@ -1,0 +1,6 @@
+@E_Commerce_Admin_Panel_HostAddress = http://localhost:5244
+
+GET {{E_Commerce_Admin_Panel_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
