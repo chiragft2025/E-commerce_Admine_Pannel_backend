@@ -81,9 +81,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Order.Manage")]
         public async Task<IActionResult> Create([FromBody] CreateOrderRequest dto)
         {
-            // For demo: require Order.View or Order.Cancel for creating (adjust as needed)
-            if (!UserHasPermission("Order.View") && !UserHasPermission("Order.Cancel")) return Forbid();
-
             var customer = await _db.Customers.FindAsync(dto.CustomerId);
             if (customer == null) return BadRequest("Invalid customer");
 
@@ -147,8 +144,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Order.Manage")]
         public async Task<IActionResult> Cancel(long id)
         {
-            if (!UserHasPermission("Order.Cancel")) return Forbid();
-
             var order = await _db.Orders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == id);
             if (order == null) return NotFound();
 

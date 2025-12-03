@@ -90,8 +90,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Product.Manage")]
         public async Task<IActionResult> Create([FromBody] CreateProductRequest dto)
         {
-            if (!UserHasPermission("Product.Create")) return Forbid();
-
             if (dto == null) return BadRequest("Payload required");
             if (string.IsNullOrWhiteSpace(dto.Name)) return BadRequest("Name is required");
             if (dto.Price < 0) return BadRequest("Price must be >= 0");
@@ -239,8 +237,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Product.Manage")]
         public async Task<IActionResult> Update(long id, [FromBody] UpdateProductRequest dto)
         {
-            if (!UserHasPermission("Product.Edit")) return Forbid();
-
             var p = await _db.Products
                 .Include(x => x.ProductTags).ThenInclude(pt => pt.Tag)
                 .FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
@@ -362,8 +358,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Product.Manage")]
         public async Task<IActionResult> Delete(long id)
         {
-            if (!UserHasPermission("Product.Delete")) return Forbid();
-
             var p = await _db.Products.FindAsync(id);
             if (p == null) return NotFound();
 

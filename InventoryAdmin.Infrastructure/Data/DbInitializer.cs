@@ -67,9 +67,9 @@ namespace InventoryAdmin.Infrastructure.Data
                 // Manager -> most permissions
                 var managerPermNames = new[]
                 {
-                    "Product.View","Product.Create","Product.Edit","Product.Delete",
-                    "Order.View","Order.Cancel",
-                    "Category.Manage","Customer.Manage"
+                    "Product.View","Product.Manage","Category.Manage","Role.Manage",
+                    "Order.View","Order.Manage",
+                    "Category.View","Customer.Manage"
                 };
 
                 var managerPerms = allPerms.Where(p => managerPermNames.Contains(p.Name)).ToList();

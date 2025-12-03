@@ -92,8 +92,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Category.Manage")]
         public async Task<IActionResult> Create([FromBody] CreateCategoryRequest dto)
         {
-            if (!UserHasPermission("Category.Manage") && !UserHasPermission("Product.Create"))
-                return Forbid();
 
             if (string.IsNullOrWhiteSpace(dto.Title)) return BadRequest("Title required");
 
@@ -115,7 +113,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Category.Manage")]
         public async Task<IActionResult> Update(long id, [FromBody] UpdateCategoryRequest dto)
         {
-            if (!UserHasPermission("Category.Manage")) return Forbid();
 
             var c = await _db.Categories.FindAsync(id);
             if (c == null) return NotFound();
@@ -133,7 +130,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Category.Manage")]
         public async Task<IActionResult> Delete(long id)
         {
-            if (!UserHasPermission("Category.Manage")) return Forbid();
 
             var c = await _db.Categories.Include(x => x.Products).FirstOrDefaultAsync(x => x.Id == id);
             if (c == null) return NotFound();

@@ -82,7 +82,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Customer.Manage")]
         public async Task<IActionResult> Create([FromBody] CreateCustomerRequest dto)
         {
-            if (!UserHasPermission("Customer.Manage")) return Forbid();
 
             if (string.IsNullOrWhiteSpace(dto.FullName) || string.IsNullOrWhiteSpace(dto.Email))
                 return BadRequest("FullName and Email required");
@@ -107,7 +106,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Customer.Manage")]
         public async Task<IActionResult> Update(long id, [FromBody] UpdateCustomerRequest dto)
         {
-            if (!UserHasPermission("Customer.Manage")) return Forbid();
 
             var c = await _db.Customers.FindAsync(id);
             if (c == null) return NotFound();
@@ -127,8 +125,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Customer.Manage")]
         public async Task<IActionResult> Delete(long id)
         {
-            if (!UserHasPermission("Customer.Manage")) return Forbid();
-
             var c = await _db.Customers.FindAsync(id);
             if (c == null) return NotFound();
 
