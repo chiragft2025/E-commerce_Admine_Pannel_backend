@@ -86,8 +86,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("User.Manage")]
         public async Task<IActionResult> Create([FromBody] CreateUserRequest dto)
         {
-           
-
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
             // Normalize

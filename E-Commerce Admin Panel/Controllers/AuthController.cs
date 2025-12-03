@@ -89,10 +89,14 @@ namespace E_Commerce_Admin_Panel.Controllers
             if (req == null || string.IsNullOrWhiteSpace(req.UserName) || string.IsNullOrWhiteSpace(req.Password))
                 return BadRequest("username and password are required");
 
-            // find the user (only active and not soft-deleted)
+            // find the user (case-sensitive username check + only active and not soft-deleted)
             var user = await _db.Users
                 .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                .FirstOrDefaultAsync(u => u.UserName == req.UserName && !u.IsDelete && u.IsActive);
+                .FirstOrDefaultAsync(u =>
+                    EF.Functions.Collate(u.UserName, "SQL_Latin1_General_CP1_CS_AS") == req.UserName
+                    && !u.IsDelete
+                    && u.IsActive
+                );
 
             if (user == null)
                 return BadRequest("invalid credentials");
@@ -102,10 +106,10 @@ namespace E_Commerce_Admin_Panel.Controllers
             if (pwResult == PasswordVerificationResult.Failed)
                 return BadRequest("invalid credentials");
 
-            // gather role ids from navigation
+            // gather role ids
             var roleIds = user.UserRoles.Select(ur => ur.RoleId).ToList();
 
-            // gather permissions via RolePermissions
+            // gather permissions
             var permissions = await _db.RolePermissions
                 .Where(rp => roleIds.Contains(rp.RoleId))
                 .Include(rp => rp.Permission)
@@ -113,17 +117,16 @@ namespace E_Commerce_Admin_Panel.Controllers
                 .Distinct()
                 .ToListAsync();
 
-            // gather role names (using navigation already loaded)
+            // gather role names
             var roles = user.UserRoles
                 .Select(ur => ur.Role?.Name)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .Distinct()
                 .ToList();
 
-            // create token (ITokenService should accept roles + permissions)
+            // create JWT token
             var token = _tokenService.CreateToken(user.Id, user.UserName, permissions, roles);
 
-            // optional: return roles & permissions for convenience
             return Ok(new
             {
                 Token = token,

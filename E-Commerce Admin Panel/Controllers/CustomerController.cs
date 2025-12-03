@@ -82,9 +82,22 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Customer.Manage")]
         public async Task<IActionResult> Create([FromBody] CreateCustomerRequest dto)
         {
-
             if (string.IsNullOrWhiteSpace(dto.FullName) || string.IsNullOrWhiteSpace(dto.Email))
                 return BadRequest("FullName and Email required");
+
+            // 🔍 Check FullName duplicate (case-insensitive)
+            var nameExists = await _db.Customers
+                .AnyAsync(x => x.FullName.ToLower() == dto.FullName.ToLower());
+
+            if (nameExists)
+                return BadRequest("Customer full name already exists");
+
+            // 🔍 Check Email duplicate (case-insensitive)
+            var emailExists = await _db.Customers
+                .AnyAsync(x => x.Email.ToLower() == dto.Email.ToLower());
+
+            if (emailExists)
+                return BadRequest("Customer email already exists");
 
             var cust = new Customer
             {
@@ -101,6 +114,8 @@ namespace E_Commerce_Admin_Panel.Controllers
 
             return CreatedAtAction(nameof(Get), new { id = cust.Id }, cust);
         }
+
+
 
         [HttpPut("{id:long}")]
         [HasPermission("Customer.Manage")]

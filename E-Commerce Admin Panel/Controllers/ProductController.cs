@@ -98,6 +98,12 @@ namespace E_Commerce_Admin_Panel.Controllers
             var category = await _db.Categories.FindAsync(dto.CategoryId);
             if (category == null) return BadRequest("Invalid category id");
 
+            var nameToCheck = dto.Name.Trim();
+            var nameExists = await _db.Products
+                .AnyAsync(p => p.Name.ToLower() == nameToCheck.ToLower());
+            if (nameExists)
+                return BadRequest("Product name already exists");
+
             // --- SAFE: extract incoming tag names regardless of concrete DTO type ---
             List<string> incomingTagNames;
             if (dto.Tags == null)

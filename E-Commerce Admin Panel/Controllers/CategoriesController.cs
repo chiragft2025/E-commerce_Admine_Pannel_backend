@@ -92,8 +92,15 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Category.Manage")]
         public async Task<IActionResult> Create([FromBody] CreateCategoryRequest dto)
         {
+            if (string.IsNullOrWhiteSpace(dto.Title))
+                return BadRequest("Title required");
 
-            if (string.IsNullOrWhiteSpace(dto.Title)) return BadRequest("Title required");
+            // Check duplicate title (case-insensitive)
+            var exists = await _db.Categories
+                .AnyAsync(x => x.Title.ToLower() == dto.Title.ToLower());
+
+            if (exists)
+                return BadRequest("Category title already exists");
 
             var c = new Category
             {
