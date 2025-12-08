@@ -102,7 +102,6 @@ builder.Services.AddAuthentication(options =>
 })
 // Register the BasicAuthenticationHandler (class file still required)
 .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>("BasicAuthentication", null);
-// --------------------------------------------------------------------------------------------
 
 builder.Services.AddCors(options =>
 {

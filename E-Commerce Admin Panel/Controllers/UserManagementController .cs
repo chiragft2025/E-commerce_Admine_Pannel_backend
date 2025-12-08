@@ -83,7 +83,7 @@ namespace E_Commerce_Admin_Panel.Controllers
 
         
         [HttpPost]
-        [HasPermission("User.Manage")]
+        [HasPermission("User.Create")]
         public async Task<IActionResult> Create([FromBody] CreateUserRequest dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -146,7 +146,7 @@ namespace E_Commerce_Admin_Panel.Controllers
 
         // PUT: api/UserManagement/{id}
         [HttpPut("{id:long}")]
-        [HasPermission("User.Manage")]
+        [HasPermission("User.Edit")]
         public async Task<IActionResult> Update(long id, [FromBody] UpdateUserRequest dto)
         {
             
@@ -171,7 +171,7 @@ namespace E_Commerce_Admin_Panel.Controllers
 
         // DELETE: api/UserManagement/{id} (soft delete)
         [HttpDelete("{id:long}")]
-        [HasPermission("User.Manage")]
+        [HasPermission("User.Delte")]
         public async Task<IActionResult> Delete(long id)
         {
             
@@ -188,7 +188,7 @@ namespace E_Commerce_Admin_Panel.Controllers
 
         // POST: api/UserManagement/{id}/roles  (assign roles)
         [HttpPost("{id:long}/roles")]
-        [HasPermission("User.Manage")]
+        [HasPermission("User.Edit")]
         public async Task<IActionResult> AssignRoles(long id, [FromBody] AssignRolesRequest dto)
         {
            
@@ -232,7 +232,6 @@ namespace E_Commerce_Admin_Panel.Controllers
 
         // GET: api/UserManagement/{id}/roles
         [HttpGet("{id:long}/roles")]
-        [HasPermission("User.Manage")]
         public async Task<IActionResult> GetUserRoles(long id)
         {
             var user = await _db.Users.Include(u => u.UserRoles).ThenInclude(ur => ur.Role)

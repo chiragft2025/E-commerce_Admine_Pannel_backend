@@ -25,11 +25,39 @@ namespace E_Commerce_Admin_Panel.Controllers
     [FromQuery] int pageSize = 10,
     [FromQuery] string? search = null)
         {
+            if (page < 1) page = 1;
+            if (pageSize < 1) pageSize = 10;
+            if (pageSize > 200) pageSize = 200;
+
             var q = _db.Orders
                 .Include(o => o.Customer)
-                .AsNoTracking();
+                .AsNoTracking()
+                .Where(o => !o.IsDelete);  // If you track soft delete
 
-            // Apply search if provided
+            // --------------------------
+            // OWNERSHIP FILTER (IMPORTANT)
+            // --------------------------
+            if (!IsAdmin())
+            {
+                var currentUser = GetCurrentUsername();
+                if (string.IsNullOrEmpty(currentUser))
+                    return Forbid();
+
+                // If your Order has a CreatedBy (string username)
+                q = q.Where(o => o.CreatedBy == currentUser);
+
+                // ---- If Order has numeric CreatedById, use this instead ----
+                /*
+                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(idClaim) || !long.TryParse(idClaim, out var currId))
+                    return Forbid();
+                q = q.Where(o => o.CreatedById == currId);
+                */
+            }
+
+            // --------------------------
+            // SEARCH FILTER
+            // --------------------------
             if (!string.IsNullOrWhiteSpace(search))
             {
                 search = search.Trim().ToLower();
@@ -39,6 +67,9 @@ namespace E_Commerce_Admin_Panel.Controllers
                 );
             }
 
+            // --------------------------
+            // SORT + PAGING
+            // --------------------------
             q = q.OrderByDescending(o => o.PlacedAt);
 
             var total = await q.CountAsync();
@@ -56,7 +87,9 @@ namespace E_Commerce_Admin_Panel.Controllers
                     {
                         o.Customer.Id,
                         o.Customer.FullName
-                    }
+                    },
+                    o.CreatedBy,
+                    o.CreatedAt
                 })
                 .ToListAsync();
 
@@ -70,12 +103,65 @@ namespace E_Commerce_Admin_Panel.Controllers
             var order = await _db.Orders
                 .Include(o => o.Items).ThenInclude(i => i.Product)
                 .Include(o => o.Customer)
-                .FirstOrDefaultAsync(o => o.Id == id);
+                .FirstOrDefaultAsync(o => o.Id == id && !o.IsDelete);
 
-            if (order == null) return NotFound();
+            if (order == null)
+                return NotFound();
 
-            return Ok(order);
+            // ---------------------------
+            // OWNERSHIP CHECK
+            // ---------------------------
+            if (!IsAdmin())
+            {
+                var currentUser = GetCurrentUsername();
+                if (string.IsNullOrEmpty(currentUser))
+                    return Forbid();
+
+                // If CreatedBy is a STRING (username)
+                if (!string.Equals(order.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
+                    return Forbid();
+
+                // ---- If CreatedBy is NUMERIC ID, use this instead ----
+                /*
+                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(idClaim) || !long.TryParse(idClaim, out var currId))
+                    return Forbid();
+
+                if (order.CreatedById != currId)
+                    return Forbid();
+                */
+            }
+
+            // Return a safe / shaped DTO (recommended)
+            return Ok(new
+            {
+                order.Id,
+                order.PlacedAt,
+                order.Status,
+                order.TotalAmount,
+                Customer = new
+                {
+                    order.Customer.Id,
+                    order.Customer.FullName,
+                    order.Customer.Email
+                },
+                Items = order.Items.Select(i => new
+                {
+                    i.Id,
+                    i.Quantity,
+                    i.UnitPrice,
+                    Product = new
+                    {
+                        i.Product.Id,
+                        i.Product.Name,
+                        i.Product.SKU
+                    }
+                }),
+                order.CreatedBy,
+                order.CreatedAt
+            });
         }
+
 
         [HttpPost]
         [HasPermission("Order.Manage")]
@@ -167,6 +253,30 @@ namespace E_Commerce_Admin_Panel.Controllers
 
             await _db.SaveChangesAsync();
             return NoContent();
+        }
+
+        private string? GetCurrentUsername()
+        {
+            if (User?.Identity?.IsAuthenticated != true) return null;
+
+            if (!string.IsNullOrEmpty(User.Identity?.Name))
+                return User.Identity.Name;
+
+            return User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
+                   ?? User.FindFirst("username")?.Value
+                   ?? User.FindFirst("preferred_username")?.Value;
+        }
+
+        private bool IsAdmin()
+        {
+            if (User == null) return false;
+
+            if (User.IsInRole("Admin")) return true;
+
+            var roles = User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(c => c.Value)
+                        .Concat(User.FindAll("role").Select(c => c.Value));
+
+            return roles.Any(r => r.Equals("Admin", StringComparison.OrdinalIgnoreCase));
         }
 
     }

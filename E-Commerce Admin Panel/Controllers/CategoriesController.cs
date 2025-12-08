@@ -29,8 +29,19 @@ namespace E_Commerce_Admin_Panel.Controllers
             if (page < 1) page = 1;
             if (pageSize < 1 || pageSize > 200) pageSize = 10;
 
-            // Base query
-            var query = _db.Categories.AsQueryable();
+            // Base query (exclude soft-deleted if you use IsDelete)
+            var query = _db.Categories.AsQueryable().Where(c => c.IsDelete == false);
+
+            // Ownership filter: non-admins should only see categories they created
+            if (!IsAdmin())
+            {
+                var currentUser = GetCurrentUsername();
+                if (string.IsNullOrEmpty(currentUser))
+                    return Forbid(); // or Unauthorized()
+
+                // CreatedBy is assumed to be stored as username (string).
+                query = query.Where(c => c.CreatedBy == currentUser);
+            }
 
             // Filter by category id if provided
             if (categoryId.HasValue)
@@ -42,7 +53,6 @@ namespace E_Commerce_Admin_Panel.Controllers
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var searchLower = search.Trim().ToLowerInvariant();
-                // Use ToLower on DB fields; EF Core will translate this for common providers.
                 query = query.Where(c =>
                     c.Title.ToLower().Contains(searchLower) ||
                     (c.Description != null && c.Description.ToLower().Contains(searchLower)));
@@ -60,7 +70,9 @@ namespace E_Commerce_Admin_Panel.Controllers
                 {
                     c.Id,
                     c.Title,
-                    c.Description
+                    c.Description,
+                    c.CreatedBy,
+                    c.CreatedAt
                 })
                 .ToListAsync();
 
@@ -78,18 +90,63 @@ namespace E_Commerce_Admin_Panel.Controllers
             return Ok(result);
         }
 
-        // GET: api/Categories/{id}
+        // ---------- Helpers to add inside the same controller (or shared base) ----------
+
+        private string? GetCurrentUsername()
+        {
+            if (User?.Identity?.IsAuthenticated != true) return null;
+
+            if (!string.IsNullOrEmpty(User.Identity?.Name))
+                return User.Identity.Name;
+
+            // common claim names
+            return User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
+                   ?? User.FindFirst("name")?.Value
+                   ?? User.FindFirst("preferred_username")?.Value
+                   ?? User.FindFirst("username")?.Value;
+        }
+
+        private bool IsAdmin()
+        {
+            if (User == null) return false;
+
+            // common role checks
+            if (User.IsInRole("Admin")) return true;
+
+            var roles = User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(c => c.Value)
+                        .Concat(User.FindAll("role").Select(c => c.Value));
+
+            return roles.Any(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase));
+        }
+
         [HttpGet("{id:long}")]
         [HasPermission("Category.View")]
         public async Task<IActionResult> Get(long id)
         {
-            var cat = await _db.Categories.FindAsync(id);
+            var cat = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id && c.IsDelete == false);
             if (cat == null) return NotFound();
-            return Ok(new { cat.Id, cat.Title, cat.Description });
+
+            // Ownership check - only owner or admin can view
+            if (!IsAdmin())
+            {
+                var currentUser = GetCurrentUsername();
+                if (string.IsNullOrEmpty(currentUser))
+                    return Forbid();
+
+                if (cat.CreatedBy != currentUser)
+                    return Forbid(); // User is NOT owner → access denied
+            }
+
+            return Ok(new
+            {
+                cat.Id,
+                cat.Title,
+                cat.Description
+            });
         }
 
         [HttpPost]
-        [HasPermission("Category.Manage")]
+        [HasPermission("Category.Create")]
         public async Task<IActionResult> Create([FromBody] CreateCategoryRequest dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Title))
@@ -117,7 +174,7 @@ namespace E_Commerce_Admin_Panel.Controllers
         }
 
         [HttpPut("{id:long}")]
-        [HasPermission("Category.Manage")]
+        [HasPermission("Category.Edit")]
         public async Task<IActionResult> Update(long id, [FromBody] UpdateCategoryRequest dto)
         {
 
@@ -134,7 +191,7 @@ namespace E_Commerce_Admin_Panel.Controllers
         }
 
         [HttpDelete("{id:long}")]
-        [HasPermission("Category.Manage")]
+        [HasPermission("Category.Delete")]
         public async Task<IActionResult> Delete(long id)
         {
 

@@ -25,19 +25,43 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HttpGet]
         [HasPermission("Product.View")]
         public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10,
-            [FromQuery] long? categoryId = null, [FromQuery] string? search = null)
+       [FromQuery] long? categoryId = null, [FromQuery] string? search = null)
         {
             if (page < 1) page = 1;
             if (pageSize < 1 || pageSize > 200) pageSize = 10;
 
+            // Base query (only active & not deleted)
             var query = _db.Products
                 .AsNoTracking()
                 .Include(p => p.Category)
                 .Include(p => p.ProductTags).ThenInclude(pt => pt.Tag)
                 .Where(p => p.IsActive && !p.IsDelete);
 
+            // Ownership filter: non-admins only see their own products
+            if (!IsAdmin())
+            {
+                var currentUser = GetCurrentUsername();
+                if (string.IsNullOrEmpty(currentUser))
+                    return Forbid(); // or Unauthorized()
+
+                // If CreatedBy is a string username:
+                query = query.Where(p => p.CreatedBy == currentUser);
+
+                // If CreatedBy is numeric ID, use the alternative below (comment out above):
+                /*
+                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(idClaim) || !long.TryParse(idClaim, out var currId))
+                    return Forbid();
+                query = query.Where(p => p.CreatedById == currId); // adjust field name/type accordingly
+                */
+            }
+
             if (categoryId.HasValue) query = query.Where(p => p.CategoryId == categoryId.Value);
-            if (!string.IsNullOrWhiteSpace(search)) query = query.Where(p => p.Name.Contains(search));
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var searchTrim = search.Trim();
+                query = query.Where(p => p.Name.Contains(searchTrim));
+            }
 
             var total = await query.CountAsync();
 
@@ -54,12 +78,42 @@ namespace E_Commerce_Admin_Panel.Controllers
                     p.Stock,
                     p.IsActive,
                     Category = p.Category == null ? null : new { p.Category.Id, p.Category.Title },
-                    Tags = p.ProductTags.Select(pt => new { pt.TagId, pt.Tag.Name })
+                    Tags = p.ProductTags.Select(pt => new { pt.TagId, pt.Tag.Name }),
+                    p.CreatedBy,
+                    p.CreatedAt
                 })
                 .ToListAsync();
 
             return Ok(new { total, page, pageSize, items });
         }
+
+        private string? GetCurrentUsername()
+        {
+            if (User?.Identity?.IsAuthenticated != true) return null;
+
+            if (!string.IsNullOrEmpty(User.Identity?.Name))
+                return User.Identity.Name;
+
+            // common claim names
+            return User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
+                   ?? User.FindFirst("name")?.Value
+                   ?? User.FindFirst("preferred_username")?.Value
+                   ?? User.FindFirst("username")?.Value;
+        }
+
+        private bool IsAdmin()
+        {
+            if (User == null) return false;
+
+            // common role checks
+            if (User.IsInRole("Admin")) return true;
+
+            var roles = User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(c => c.Value)
+                        .Concat(User.FindAll("role").Select(c => c.Value));
+
+            return roles.Any(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase));
+        }
+
 
         [HttpGet("{id:long}")]
         [HasPermission("Product.View")]
@@ -72,6 +126,29 @@ namespace E_Commerce_Admin_Panel.Controllers
 
             if (p == null) return NotFound();
 
+            // Ownership check: admins can view any product; non-admins only their own
+            if (!IsAdmin())
+            {
+                var currentUser = GetCurrentUsername();
+                if (string.IsNullOrEmpty(currentUser))
+                    return Forbid();
+
+                // If CreatedBy is stored as a string username:
+                if (!string.Equals(p.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
+                    return Forbid();
+
+                // --- If you use numeric user IDs for CreatedBy instead ---
+                // Comment out the string check above and use this block if CreatedBy is numeric:
+                /*
+                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(idClaim) || !long.TryParse(idClaim, out var currId))
+                    return Forbid();
+
+                if (p.CreatedById != currId) // adjust property name/type accordingly
+                    return Forbid();
+                */
+            }
+
             return Ok(new
             {
                 p.Id,
@@ -82,12 +159,14 @@ namespace E_Commerce_Admin_Panel.Controllers
                 p.Stock,
                 p.IsActive,
                 Category = p.Category == null ? null : new { p.Category.Id, p.Category.Title },
-                Tags = p.ProductTags.Select(pt => new { pt.TagId, pt.Tag.Name })
+                Tags = p.ProductTags.Select(pt => new { pt.TagId, pt.Tag.Name }),
+                p.CreatedBy,   // optional: include for admin or auditing
+                p.CreatedAt     // optional
             });
         }
 
         [HttpPost]
-        [HasPermission("Product.Manage")]
+        [HasPermission("Product.Create")]
         public async Task<IActionResult> Create([FromBody] CreateProductRequest dto)
         {
             if (dto == null) return BadRequest("Payload required");
@@ -240,7 +319,7 @@ namespace E_Commerce_Admin_Panel.Controllers
 
 
         [HttpPut("{id:long}")]
-        [HasPermission("Product.Manage")]
+        [HasPermission("Product.Edit")]
         public async Task<IActionResult> Update(long id, [FromBody] UpdateProductRequest dto)
         {
             var p = await _db.Products
@@ -361,7 +440,7 @@ namespace E_Commerce_Admin_Panel.Controllers
         }
 
         [HttpDelete("{id:long}")]
-        [HasPermission("Product.Manage")]
+        [HasPermission("Product.Delete")]
         public async Task<IActionResult> Delete(long id)
         {
             var p = await _db.Products.FindAsync(id);

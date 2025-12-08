@@ -21,22 +21,31 @@ namespace InventoryAdmin.Infrastructure.Data
             {
                 var permissions = new[]
                 {
-                    new Permission { Name = "Product.View", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow },
-                    new Permission { Name = "Product.Manage", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow },
-                    new Permission { Name = "Customer.View", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow },
-                    new Permission { Name = "Customer.Manage", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Product.View", CreatedBy = "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Product.Create", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Product.Edit", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Product.Delete", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
 
-                    new Permission { Name = "Category.View", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow },
-                    new Permission { Name = "Category.Manage", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Customer.View", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                     new Permission { Name = "Customer.Create", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Customer.Edit", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                     new Permission { Name = "Customer.Delete", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
 
-                    new Permission { Name = "Order.View", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow },
-                    new Permission { Name = "Order.Manage", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Category.View", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Category.Edit", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                     new Permission { Name = "Category.Create", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                      new Permission { Name = "Category.Delete", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+
+                    new Permission { Name = "Order.View", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Order.Manage", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
 
 
-                     new Permission { Name = "User.View", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow },
-                    new Permission { Name = "User.Manage", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow },
+                     new Permission { Name = "User.View", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                     new Permission { Name = "User.Edit", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                     new Permission { Name = "User.Create", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "User.Delete", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
 
-                     new Permission { Name = "Role.Manage", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow }
+                     new Permission { Name = "Role.Manage", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow }
                 };
 
                 context.Permissions.AddRange(permissions);
@@ -46,9 +55,9 @@ namespace InventoryAdmin.Infrastructure.Data
             // ========== ROLES ==========
             if (!context.Roles.Any())
             {
-                var adminRole = new Role { Name = "Admin", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow };
-                var managerRole = new Role { Name = "Manager", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow };
-                var viewerRole = new Role { Name = "Viewer", CreatedBy = null, CreatedAt = DateTimeOffset.UtcNow };
+                var adminRole = new Role { Name = "Admin", CreatedBy = "admin", CreatedAt = DateTimeOffset.UtcNow };
+                var managerRole = new Role { Name = "Manager", CreatedBy = "admin", CreatedAt = DateTimeOffset.UtcNow };
+                var viewerRole = new Role { Name = "Viewer", CreatedBy = "admin", CreatedAt = DateTimeOffset.UtcNow };
 
                 context.Roles.AddRange(adminRole, managerRole, viewerRole);
                 await context.SaveChangesAsync();
@@ -106,7 +115,7 @@ namespace InventoryAdmin.Infrastructure.Data
                     UserName = "admin",
                     Email = "admin@example.local",
                     IsActive = true,
-                    CreatedBy = null,
+                    CreatedBy = "admin",
                     CreatedAt = DateTimeOffset.UtcNow
                 };
 
@@ -133,7 +142,7 @@ namespace InventoryAdmin.Infrastructure.Data
                 {
                     Title = "General",
                     Description = "Default category",
-                    CreatedBy = null,
+                    CreatedBy = "admin",
                     CreatedAt = DateTimeOffset.UtcNow
                 };
 
@@ -147,7 +156,7 @@ namespace InventoryAdmin.Infrastructure.Data
                     Price = 50,
                     Stock = 10,
                     CategoryId = cat.Id,
-                    CreatedBy = null,
+                    CreatedBy = "admin",
                     CreatedAt = DateTimeOffset.UtcNow
                 };
 

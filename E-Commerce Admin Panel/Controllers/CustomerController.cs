@@ -21,32 +21,52 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HttpGet]
         [HasPermission("Customer.View")]
         public async Task<IActionResult> GetAll(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10,
-        [FromQuery] string? search = null)
+     [FromQuery] int page = 1,
+     [FromQuery] int pageSize = 10,
+     [FromQuery] string? search = null)
         {
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 10;
-            if (pageSize > 200) pageSize = 200; // safety cap
+            if (pageSize > 200) pageSize = 200;
 
-
-            // Base query: exclude deleted
+            // Base query (exclude deleted)
             var query = _db.Customers
                 .AsNoTracking()
                 .Where(c => !c.IsDelete);
 
-            // Optional search: check name or email (case-insensitive)
+            // Ownership filter — admins see all, users see only their own customers
+            if (!IsAdmin())
+            {
+                var currentUser = GetCurrentUsername();
+                if (string.IsNullOrEmpty(currentUser))
+                    return Forbid();
+
+                // If CreatedBy is a username
+                query = query.Where(c => c.CreatedBy == currentUser);
+
+                // ---- If CreatedBy is numeric (CreatedById), use this instead ----
+                /*
+                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(idClaim) || !long.TryParse(idClaim, out var currUserId))
+                    return Forbid();
+
+                query = query.Where(c => c.CreatedById == currUserId);
+                */
+            }
+
+            // Search filter
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var s = search.Trim();
-                query = query.Where(c => EF.Functions.Like(c.FullName, $"%{s}%")
-                                      || EF.Functions.Like(c.Email, $"%{s}%"));
+                query = query.Where(c =>
+                    EF.Functions.Like(c.FullName, $"%{s}%") ||
+                    EF.Functions.Like(c.Email, $"%{s}%"));
             }
 
             var total = await query.CountAsync();
 
             var items = await query
-                .OrderBy(c => c.FullName) // or other preferred sort
+                .OrderBy(c => c.FullName)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(c => new
@@ -55,7 +75,9 @@ namespace E_Commerce_Admin_Panel.Controllers
                     c.FullName,
                     c.Email,
                     c.Phone,
-                    c.Address
+                    c.Address,
+                    c.CreatedBy,
+                    c.CreatedAt
                 })
                 .ToListAsync();
 
@@ -68,18 +90,80 @@ namespace E_Commerce_Admin_Panel.Controllers
             });
         }
 
+        private string? GetCurrentUsername()
+        {
+            if (User?.Identity?.IsAuthenticated != true) return null;
+
+            if (!string.IsNullOrEmpty(User.Identity?.Name))
+                return User.Identity.Name;
+
+            // common claim names
+            return User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
+                   ?? User.FindFirst("name")?.Value
+                   ?? User.FindFirst("preferred_username")?.Value
+                   ?? User.FindFirst("username")?.Value;
+        }
+
+        private bool IsAdmin()
+        {
+            if (User == null) return false;
+
+            // common role checks
+            if (User.IsInRole("Admin")) return true;
+
+            var roles = User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(c => c.Value)
+                        .Concat(User.FindAll("role").Select(c => c.Value));
+
+            return roles.Any(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase));
+        }
+
+
 
         [HttpGet("{id:long}")]
         [HasPermission("Customer.View")]
         public async Task<IActionResult> Get(long id)
         {
-            var c = await _db.Customers.FindAsync(id);
+            var c = await _db.Customers.FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
             if (c == null) return NotFound();
-            return Ok(c);
+
+            // Ownership check — only admin or the creator can view
+            if (!IsAdmin())
+            {
+                var currentUser = GetCurrentUsername();
+                if (string.IsNullOrEmpty(currentUser))
+                    return Forbid();
+
+                // If CreatedBy is stored as username
+                if (!string.Equals(c.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
+                    return Forbid();
+
+                // ---- If CreatedBy is numeric (CreatedById) use this instead ----
+                /*
+                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(idClaim) || !long.TryParse(idClaim, out var currUserId))
+                    return Forbid();
+
+                if (c.CreatedById != currUserId)
+                    return Forbid();
+                */
+            }
+
+            // What you return is up to you — here returning only safe fields:
+            return Ok(new
+            {
+                c.Id,
+                c.FullName,
+                c.Email,
+                c.Phone,
+                c.Address,
+                c.CreatedBy,
+                c.CreatedAt
+            });
         }
 
+
         [HttpPost]
-        [HasPermission("Customer.Manage")]
+        [HasPermission("Customer.Create")]
         public async Task<IActionResult> Create([FromBody] CreateCustomerRequest dto)
         {
             if (string.IsNullOrWhiteSpace(dto.FullName) || string.IsNullOrWhiteSpace(dto.Email))
@@ -118,7 +202,7 @@ namespace E_Commerce_Admin_Panel.Controllers
 
 
         [HttpPut("{id:long}")]
-        [HasPermission("Customer.Manage")]
+        [HasPermission("Customer.Edit")]
         public async Task<IActionResult> Update(long id, [FromBody] UpdateCustomerRequest dto)
         {
 
@@ -137,7 +221,7 @@ namespace E_Commerce_Admin_Panel.Controllers
         }
 
         [HttpDelete("{id:long}")]
-        [HasPermission("Customer.Manage")]
+        [HasPermission("Customer.Delete")]
         public async Task<IActionResult> Delete(long id)
         {
             var c = await _db.Customers.FindAsync(id);
