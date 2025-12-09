@@ -209,13 +209,26 @@ namespace E_Commerce_Admin_Panel.Controllers
         public async Task<IActionResult> Delete(long id)
         {
             var role = await _db.Roles.FirstOrDefaultAsync(r => r.Id == id && !r.IsDelete);
-            if (role == null) return NotFound();
+            if (role == null)
+                return NotFound();
 
+            // ❗ Check if ANY user has this role
+            bool isRoleAssigned = await _db.UserRoles.AnyAsync(ur => ur.RoleId == id);
+
+            if (isRoleAssigned)
+            {
+                return Conflict(new
+                {
+                    message = "Cannot delete this role because it is assigned to one or more users."
+                });
+            }
+
+            // Soft delete
             role.IsDelete = true;
             role.LastModifiedAt = DateTimeOffset.UtcNow;
             role.LastModifiedBy = User?.Identity?.Name ?? role.LastModifiedBy;
-            await _db.SaveChangesAsync();
 
+            await _db.SaveChangesAsync();
             return NoContent();
         }
     }
