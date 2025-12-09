@@ -242,6 +242,28 @@ namespace E_Commerce_Admin_Panel.Controllers
             return Ok(user.UserRoles.Select(ur => new { ur.RoleId, ur.Role.Name }));
         }
 
+        // GET: api/UserManagement/{id}
+        [HttpGet("profile")]
+        [Authorize]
+        public async Task<IActionResult> profile()
+        {
+            string name = User.Identity.Name;
+            var user = await _db.Users
+                .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.UserName == name && !u.IsDelete);
+
+            if (user == null) return NotFound();
+
+            return Ok(new
+            {
+                user.Id,
+                user.UserName,
+                user.Email,
+                user.IsActive,
+                Roles = user.UserRoles.Select(ur => new { ur.RoleId, ur.Role.Name })
+            });
+        }
+
     }
 }
 

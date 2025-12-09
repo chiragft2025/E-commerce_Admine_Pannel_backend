@@ -9,3 +9,4 @@ D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Domai
 D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Domain\obj\Debug\net8.0\refint\InventoryAdmin.Domain.dll
 D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Domain\obj\Debug\net8.0\InventoryAdmin.Domain.pdb
 D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Domain\obj\Debug\net8.0\ref\InventoryAdmin.Domain.dll
+D:\1-Chirag-Internship-2025\Excercie\E-Commerce Admin Panel\InventoryAdmin.Domain\obj\Debug\net8.0\InventoryAdmin.Domain.sourcelink.json

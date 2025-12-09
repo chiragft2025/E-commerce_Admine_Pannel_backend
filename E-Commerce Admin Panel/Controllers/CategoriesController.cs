@@ -194,14 +194,24 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Category.Delete")]
         public async Task<IActionResult> Delete(long id)
         {
+            var c = await _db.Categories
+                             .Include(x => x.Products)
+                             .FirstOrDefaultAsync(x => x.Id == id);
 
-            var c = await _db.Categories.Include(x => x.Products).FirstOrDefaultAsync(x => x.Id == id);
-            if (c == null) return NotFound();
+            if (c == null)
+                return NotFound();
 
-            // Soft delete
+            var hasActiveProducts = c.Products.Any(p => !p.IsDelete);
+            if (hasActiveProducts)
+            {
+                // Throw and let your global exception handler convert to a response
+                throw new InvalidOperationException("Category cannot be deleted because it is used by one or more products.");
+            }
+
             c.IsDelete = true;
             c.LastModifiedAt = DateTimeOffset.UtcNow;
-            c.LastModifiedBy = User.Identity?.Name ?? c.LastModifiedBy;
+            c.LastModifiedBy = User?.Identity?.Name ?? c.LastModifiedBy;
+
             await _db.SaveChangesAsync();
 
             return NoContent();
