@@ -1,4 +1,5 @@
 ﻿using E_Commerce_Admin_Panel.Authorization;
+using E_Commerce_Admin_Panel.Dtos;
 using E_Commerce_Admin_Panel.Dtos.Category;
 using InventoryAdmin.Domain.Entities;
 using InventoryAdmin.Infrastructure.Data;
@@ -16,36 +17,29 @@ namespace E_Commerce_Admin_Panel.Controllers
 
         [HttpGet]
         [HasPermission("Category.View")]
-        public async Task<IActionResult> GetAll(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10,
-        [FromQuery] long? categoryId = null,
-        [FromQuery] string? search = null)
+        public async Task<ActionResult<PagedResult<CategoryListItemDto>>> GetAll(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] long? categoryId = null,
+            [FromQuery] string? search = null)
         {
             if (page < 1) page = 1;
             if (pageSize < 1 || pageSize > 200) pageSize = 10;
 
-            // Base query (exclude soft-deleted if you use IsDelete)
             var query = _db.Categories.AsQueryable().Where(c => c.IsDelete == false);
 
-            // Ownership filter: non-admins should only see categories they created
             if (!IsAdmin())
             {
                 var currentUser = GetCurrentUsername();
                 if (string.IsNullOrEmpty(currentUser))
-                    return Forbid(); // or Unauthorized()
+                    return Forbid();
 
-                // CreatedBy is assumed to be stored as username (string).
                 query = query.Where(c => c.CreatedBy == currentUser);
             }
 
-            // Filter by category id if provided
             if (categoryId.HasValue)
-            {
                 query = query.Where(c => c.Id == categoryId.Value);
-            }
 
-            // Filter by search if provided (case-insensitive search on Title and Description)
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var searchLower = search.Trim().ToLowerInvariant();
@@ -54,27 +48,25 @@ namespace E_Commerce_Admin_Panel.Controllers
                     (c.Description != null && c.Description.ToLower().Contains(searchLower)));
             }
 
-            // Get total count before paging
             var totalCount = await query.CountAsync();
 
-            // Apply ordering, paging and projection to DTO
             var items = await query
                 .OrderBy(c => c.Title)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(c => new
+                .Select(c => new CategoryListItemDto
                 {
-                    c.Id,
-                    c.Title,
-                    c.Description,
-                    c.CreatedBy,
-                    c.CreatedAt
+                    Id = c.Id,
+                    Title = c.Title,
+                    Description = c.Description,
+                    CreatedBy = c.CreatedBy,
+                    CreatedAt = c.CreatedAt
                 })
                 .ToListAsync();
 
             var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
 
-            var result = new
+            var result = new PagedResult<CategoryListItemDto>
             {
                 Items = items,
                 Page = page,
@@ -88,12 +80,11 @@ namespace E_Commerce_Admin_Panel.Controllers
 
         [HttpGet("{id:long}")]
         [HasPermission("Category.View")]
-        public async Task<IActionResult> Get(long id)
+        public async Task<ActionResult<CategoryDto>> Get(long id)
         {
             var cat = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id && c.IsDelete == false);
             if (cat == null) return NotFound();
 
-            // Ownership check - only owner or admin can view
             if (!IsAdmin())
             {
                 var currentUser = GetCurrentUsername();
@@ -101,25 +92,30 @@ namespace E_Commerce_Admin_Panel.Controllers
                     return Forbid();
 
                 if (cat.CreatedBy != currentUser)
-                    return Forbid(); // User is NOT owner → access denied
+                    return Forbid();
             }
 
-            return Ok(new
+            var dto = new CategoryDto
             {
-                cat.Id,
-                cat.Title,
-                cat.Description
-            });
+                Id = cat.Id,
+                Title = cat.Title,
+                Description = cat.Description,
+                CreatedBy = cat.CreatedBy,
+                CreatedAt = cat.CreatedAt,
+                LastModifiedAt = cat.LastModifiedAt,
+                LastModifiedBy = cat.LastModifiedBy
+            };
+
+            return Ok(dto);
         }
 
         [HttpPost]
         [HasPermission("Category.Create")]
-        public async Task<IActionResult> Create([FromBody] CreateCategoryRequest dto)
+        public async Task<ActionResult<CategoryDto>> Create([FromBody] CreateCategoryRequest dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Title))
                 return BadRequest("Title required");
 
-            // Check duplicate title (case-insensitive)
             var exists = await _db.Categories
                 .AnyAsync(x => x.Title.ToLower() == dto.Title.ToLower());
 
@@ -137,14 +133,22 @@ namespace E_Commerce_Admin_Panel.Controllers
             _db.Categories.Add(c);
             await _db.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(Get), new { id = c.Id }, new { c.Id, c.Title, c.Description });
+            var resultDto = new CategoryDto
+            {
+                Id = c.Id,
+                Title = c.Title,
+                Description = c.Description,
+                CreatedBy = c.CreatedBy,
+                CreatedAt = c.CreatedAt
+            };
+
+            return CreatedAtAction(nameof(Get), new { id = c.Id }, resultDto);
         }
 
         [HttpPut("{id:long}")]
         [HasPermission("Category.Edit")]
         public async Task<IActionResult> Update(long id, [FromBody] UpdateCategoryRequest dto)
         {
-
             var c = await _db.Categories.FindAsync(id);
             if (c == null) return NotFound();
 
@@ -171,7 +175,6 @@ namespace E_Commerce_Admin_Panel.Controllers
             var hasActiveProducts = c.Products.Any(p => !p.IsDelete);
             if (hasActiveProducts)
             {
-                // Throw and let your global exception handler convert to a response
                 throw new InvalidOperationException("Category cannot be deleted because it is used by one or more products.");
             }
 

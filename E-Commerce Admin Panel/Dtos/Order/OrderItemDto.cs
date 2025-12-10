@@ -2,7 +2,9 @@
 {
     public class OrderItemDto
     {
-        public long ProductId { get; set; }
+        public long Id { get; set; }
         public int Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public ProductBriefDto Product { get; set; } = new ProductBriefDto();
     }
 }

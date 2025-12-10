@@ -1,10 +1,9 @@
 ﻿using E_Commerce_Admin_Panel.Authorization;
-using InventoryAdmin.Domain.Entities;    // adjust to your domain namespace
-using InventoryAdmin.Infrastructure.Data; // adjust if needed
+using E_Commerce_Admin_Panel.Dtos.Role;
+using InventoryAdmin.Domain.Entities;
+using InventoryAdmin.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using E_Commerce_Admin_Panel.Dtos.Role;
-
 
 namespace E_Commerce_Admin_Panel.Controllers
 {
@@ -15,14 +14,10 @@ namespace E_Commerce_Admin_Panel.Controllers
     {
         private readonly ApplicationDbContext _db;
 
-        public RoleManagementController(ApplicationDbContext db)
-        {
-            _db = db;
-        }
+        public RoleManagementController(ApplicationDbContext db) => _db = db;
 
-        // GET: api/RoleManagement
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<ActionResult<IEnumerable<RoleDto>>> GetAll()
         {
             var roles = await _db.Roles
                 .AsNoTracking()
@@ -40,9 +35,8 @@ namespace E_Commerce_Admin_Panel.Controllers
             return Ok(roles);
         }
 
-        // GET: api/RoleManagement/{id}
         [HttpGet("{id:long}")]
-        public async Task<IActionResult> Get(long id)
+        public async Task<ActionResult<RoleDetailDto>> Get(long id)
         {
             var role = await _db.Roles
                 .AsNoTracking()
@@ -58,21 +52,19 @@ namespace E_Commerce_Admin_Panel.Controllers
                 Description = role.Description,
                 IsActive = role.IsActive,
                 Permissions = role.RolePermissions
-                    .Select(rp => new PermissionDto { Id = rp.PermissionId, Name = rp.Permission.Name })
+                    .Select(rp => new PermissionDto { Id = rp.PermissionId, Name = rp.Permission?.Name })
                     .ToList()
             };
 
             return Ok(dto);
         }
 
-        // POST: api/RoleManagement
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] CreateRoleRequest dto)
+        public async Task<ActionResult<RoleDto>> Create([FromBody] CreateRoleRequest dto)
         {
             if (dto == null) return BadRequest("Payload required");
             if (string.IsNullOrWhiteSpace(dto.Name)) return BadRequest("Name required");
 
-            // optional permission: ensure unique name
             var name = dto.Name.Trim();
             if (await _db.Roles.AnyAsync(r => r.Name == name && !r.IsDelete))
                 return BadRequest(new { message = "Role name already exists" });
@@ -92,21 +84,21 @@ namespace E_Commerce_Admin_Panel.Controllers
                 _db.Roles.Add(role);
                 await _db.SaveChangesAsync();
 
-                // assign permissions if provided
                 if (dto.PermissionIds != null && dto.PermissionIds.Any())
                 {
-                    var perms = await _db.Permissions.Where(p => dto.PermissionIds.Contains(p.Id) && !p.IsDelete).ToListAsync();
-                    foreach (var p in perms)
-                    {
-                        _db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = p.Id });
-                    }
+                    var perms = await _db.Permissions
+                        .Where(p => dto.PermissionIds.Contains(p.Id) && !p.IsDelete)
+                        .ToListAsync();
+
+                    var rolePermissions = perms.Select(p => new RolePermission { RoleId = role.Id, PermissionId = p.Id });
+                    _db.RolePermissions.AddRange(rolePermissions);
                     await _db.SaveChangesAsync();
                 }
 
                 await tx.CommitAsync();
 
-                // return created role detail
-                return CreatedAtAction(nameof(Get), new { id = role.Id }, new { role.Id, role.Name, role.Description });
+                var resultDto = new RoleDto { Id = role.Id, Name = role.Name, Description = role.Description, IsActive = role.IsActive };
+                return CreatedAtAction(nameof(Get), new { id = role.Id }, resultDto);
             }
             catch (Exception ex)
             {
@@ -115,9 +107,8 @@ namespace E_Commerce_Admin_Panel.Controllers
             }
         }
 
-        // PUT: api/RoleManagement/{id}
         [HttpPut("{id:long}")]
-        public async Task<IActionResult> Update(long id, [FromBody] UpdateRoleRequest dto)
+        public async Task<ActionResult<RoleDto>> Update(long id, [FromBody] UpdateRoleRequest dto)
         {
             var role = await _db.Roles.FirstOrDefaultAsync(r => r.Id == id && !r.IsDelete);
             if (role == null) return NotFound();
@@ -138,11 +129,10 @@ namespace E_Commerce_Admin_Panel.Controllers
 
             await _db.SaveChangesAsync();
 
-            return Ok(new { role.Id, role.Name, role.Description, role.IsActive });
+            var resultDto = new RoleDto { Id = role.Id, Name = role.Name, Description = role.Description, IsActive = role.IsActive };
+            return Ok(resultDto);
         }
 
-        // POST: api/RoleManagement/{id}/permissions
-        // Replace semantics: role's permissions will be replaced with provided list
         [HttpPost("{id:long}/permissions")]
         public async Task<IActionResult> AssignPermissions(long id, [FromBody] AssignPermissionsRequest dto)
         {
@@ -154,21 +144,19 @@ namespace E_Commerce_Admin_Panel.Controllers
             using var tx = await _db.Database.BeginTransactionAsync();
             try
             {
-                // validate permission ids exist
                 var perms = (dto.PermissionIds ?? Enumerable.Empty<long>()).Distinct().ToList();
-                var existingPermissions = await _db.Permissions.Where(p => perms.Contains(p.Id) && !p.IsDelete).Select(p => p.Id).ToListAsync();
+                var existingPermissions = await _db.Permissions
+                    .Where(p => perms.Contains(p.Id) && !p.IsDelete)
+                    .Select(p => p.Id)
+                    .ToListAsync();
 
-                // remove links not in new list
                 var toRemove = role.RolePermissions.Where(rp => !existingPermissions.Contains(rp.PermissionId)).ToList();
                 if (toRemove.Any()) _db.RolePermissions.RemoveRange(toRemove);
 
-                // add missing links
                 foreach (var pid in existingPermissions)
                 {
                     if (!role.RolePermissions.Any(rp => rp.PermissionId == pid))
-                    {
                         _db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = pid });
-                    }
                 }
 
                 await _db.SaveChangesAsync();
@@ -182,44 +170,35 @@ namespace E_Commerce_Admin_Panel.Controllers
             }
         }
 
-        // GET: api/RoleManagement/{id}/permissions
         [HttpGet("{id:long}/permissions")]
-        public async Task<IActionResult> GetPermissions(long id)
+        public async Task<ActionResult<IEnumerable<PermissionDto>>> GetPermissions(long id)
         {
-            var role = await _db.Roles.Include(r => r.RolePermissions).ThenInclude(rp => rp.Permission)
+            var role = await _db.Roles
+                .Include(r => r.RolePermissions).ThenInclude(rp => rp.Permission)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Id == id && !r.IsDelete);
 
             if (role == null) return NotFound();
 
-            var permissions = role.RolePermissions.Select(rp => new PermissionDto
-            {
-                Id = rp.PermissionId,
-                Name = rp.Permission?.Name
-            }).ToList();
+            var permissions = role.RolePermissions
+                .Select(rp => new PermissionDto { Id = rp.PermissionId, Name = rp.Permission?.Name })
+                .ToList();
 
             return Ok(permissions);
         }
 
-        // DELETE: api/RoleManagement/{id}
         [HttpDelete("{id:long}")]
         public async Task<IActionResult> Delete(long id)
         {
             var role = await _db.Roles.FirstOrDefaultAsync(r => r.Id == id && !r.IsDelete);
-            if (role == null)
-                return NotFound();
+            if (role == null) return NotFound();
 
-            // ❗ Check if ANY user has this role
             bool isRoleAssigned = await _db.UserRoles.AnyAsync(ur => ur.RoleId == id);
-
             if (isRoleAssigned)
             {
-                return Conflict(new
-                {
-                    message = "Cannot delete this role because it is assigned to one or more users."
-                });
+                return Conflict(new { message = "Cannot delete this role because it is assigned to one or more users." });
             }
 
-            // Soft delete
             role.IsDelete = true;
             role.LastModifiedAt = DateTimeOffset.UtcNow;
             role.LastModifiedBy = User?.Identity?.Name ?? role.LastModifiedBy;
@@ -228,5 +207,4 @@ namespace E_Commerce_Admin_Panel.Controllers
             return NoContent();
         }
     }
-
 }

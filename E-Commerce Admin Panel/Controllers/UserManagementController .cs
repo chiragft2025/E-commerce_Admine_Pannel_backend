@@ -1,9 +1,9 @@
 ﻿using E_Commerce_Admin_Panel.Authorization;
+using E_Commerce_Admin_Panel.Dtos;
 using E_Commerce_Admin_Panel.Dtos.User;
 using InventoryAdmin.Domain.Entities;
 using InventoryAdmin.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -23,13 +23,11 @@ namespace E_Commerce_Admin_Panel.Controllers
             _passwordHasher = new PasswordHasher<User>();
         }
 
-       
         [HttpGet]
         [HasPermission("User.View")]
-        public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null)
+        public async Task<ActionResult<PagedResult<UserListItemDto>>> GetAll(
+            [FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null)
         {
-            
-
             if (page < 1) page = 1;
             if (pageSize < 1 || pageSize > 200) pageSize = 10;
 
@@ -37,58 +35,73 @@ namespace E_Commerce_Admin_Panel.Controllers
                 .AsNoTracking()
                 .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
                 .Where(u => !u.IsDelete);
-            if (!string.IsNullOrWhiteSpace(search)) q = q.Where(p => p.UserName.Contains(search));
 
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim();
+                q = q.Where(p => EF.Functions.Like(p.UserName, $"%{s}%"));
+            }
 
             var total = await q.CountAsync();
+
             var items = await q
                 .OrderBy(u => u.UserName)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(u => new
+                .Select(u => new UserListItemDto
                 {
-                    u.Id,
-                    u.UserName,
-                    u.Email,
-                    u.IsActive,
+                    Id = u.Id,
+                    UserName = u.UserName,
+                    Email = u.Email,
+                    IsActive = u.IsActive,
                     Roles = u.UserRoles.Select(ur => ur.Role.Name)
                 })
                 .ToListAsync();
 
-            return Ok(new { total, page, pageSize, items });
+            var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+            var result = new PagedResult<UserListItemDto>
+            {
+                Items = items,
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = total,
+                TotalPages = totalPages
+            };
+
+            return Ok(result);
         }
 
-        
-        // GET: api/UserManagement/{id}
         [HttpGet("{id:long}")]
         [HasPermission("User.View")]
-        public async Task<IActionResult> Get(long id)
+        public async Task<ActionResult<UserDto>> Get(long id)
         {
-
             var user = await _db.Users
+                .AsNoTracking()
                 .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
                 .FirstOrDefaultAsync(u => u.Id == id && !u.IsDelete);
 
             if (user == null) return NotFound();
 
-            return Ok(new
+            var dto = new UserDto
             {
-                user.Id,
-                user.UserName,
-                user.Email,
-                user.IsActive,
-                Roles = user.UserRoles.Select(ur => new { ur.RoleId, ur.Role.Name })
-            });
+                Id = user.Id,
+                UserName = user.UserName,
+                Email = user.Email,
+                IsActive = user.IsActive,
+                Roles = user.UserRoles.Select(ur => new RoleBriefDto { RoleId = ur.RoleId, Name = ur.Role?.Name }),
+                CreatedBy = user.CreatedBy,
+                CreatedAt = user.CreatedAt
+            };
+
+            return Ok(dto);
         }
 
-        
         [HttpPost]
         [HasPermission("User.Create")]
-        public async Task<IActionResult> Create([FromBody] CreateUserRequest dto)
+        public async Task<ActionResult<UserDto>> Create([FromBody] CreateUserRequest dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            // Normalize
             var username = dto.UserName.Trim();
             var email = dto.Email.Trim().ToLowerInvariant();
 
@@ -103,7 +116,7 @@ namespace E_Commerce_Admin_Panel.Controllers
                 UserName = username,
                 Email = email,
                 IsActive = dto.IsActive,
-                CreatedBy = User.Identity?.Name ?? "system",
+                CreatedBy = User?.Identity?.Name ?? "system",
                 CreatedAt = DateTimeOffset.UtcNow
             };
 
@@ -118,12 +131,9 @@ namespace E_Commerce_Admin_Panel.Controllers
                 // assign role(s) if included, else Viewer
                 if (dto.RoleIds != null && dto.RoleIds.Any())
                 {
-                    foreach (var rid in dto.RoleIds.Distinct())
-                    {
-                        var role = await _db.Roles.FindAsync(rid);
-                        if (role != null)
-                            _db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
-                    }
+                    var roles = await _db.Roles.Where(r => dto.RoleIds.Contains(r.Id)).ToListAsync();
+                    foreach (var r in roles)
+                        _db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = r.Id });
                 }
                 else
                 {
@@ -135,22 +145,37 @@ namespace E_Commerce_Admin_Panel.Controllers
                 await _db.SaveChangesAsync();
                 await tx.CommitAsync();
 
-                return CreatedAtAction(nameof(Get), new { id = user.Id }, new { user.Id, user.UserName, user.Email });
+                // Build response DTO (do not return password/hash)
+                var created = await _db.Users
+                    .AsNoTracking()
+                    .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+                    .FirstOrDefaultAsync(u => u.Id == user.Id);
+
+                var createdDto = new UserDto
+                {
+                    Id = created!.Id,
+                    UserName = created.UserName,
+                    Email = created.Email,
+                    IsActive = created.IsActive,
+                    Roles = created.UserRoles.Select(ur => new RoleBriefDto { RoleId = ur.RoleId, Name = ur.Role?.Name }),
+                    CreatedBy = created.CreatedBy,
+                    CreatedAt = created.CreatedAt
+                };
+
+                return CreatedAtAction(nameof(Get), new { id = createdDto.Id }, createdDto);
             }
             catch (Exception ex)
             {
                 await tx.RollbackAsync();
+                // log exception as needed
                 return StatusCode(500, new { message = "Failed to create user", detail = ex.Message });
             }
         }
 
-        // PUT: api/UserManagement/{id}
         [HttpPut("{id:long}")]
         [HasPermission("User.Edit")]
         public async Task<IActionResult> Update(long id, [FromBody] UpdateUserRequest dto)
         {
-            
-
             var user = await _db.Users.Include(u => u.UserRoles).FirstOrDefaultAsync(u => u.Id == id && !u.IsDelete);
             if (user == null) return NotFound();
 
@@ -166,16 +191,13 @@ namespace E_Commerce_Admin_Panel.Controllers
             }
 
             await _db.SaveChangesAsync();
-            return Ok();
+            return NoContent();
         }
 
-        // DELETE: api/UserManagement/{id} (soft delete)
         [HttpDelete("{id:long}")]
-        [HasPermission("User.Delte")]
+        [HasPermission("User.Delete")] // fixed permission name
         public async Task<IActionResult> Delete(long id)
         {
-            
-
             var user = await _db.Users.FindAsync(id);
             if (user == null) return NotFound();
 
@@ -183,39 +205,30 @@ namespace E_Commerce_Admin_Panel.Controllers
             user.LastModifiedAt = DateTimeOffset.UtcNow;
             user.LastModifiedBy = User.Identity?.Name ?? user.LastModifiedBy;
             await _db.SaveChangesAsync();
+
             return NoContent();
         }
 
-        // POST: api/UserManagement/{id}/roles  (assign roles)
         [HttpPost("{id:long}/roles")]
         [HasPermission("User.Edit")]
         public async Task<IActionResult> AssignRoles(long id, [FromBody] AssignRolesRequest dto)
         {
-           
-
             var user = await _db.Users.Include(u => u.UserRoles).FirstOrDefaultAsync(u => u.Id == id && !u.IsDelete);
             if (user == null) return NotFound();
 
-            // Validate roles
-            var roles = await _db.Roles.Where(r => dto.RoleIds.Contains(r.Id)).ToListAsync();
+            var roleIds = dto.RoleIds?.Distinct().ToList() ?? new List<long>();
+            var roles = await _db.Roles.Where(r => roleIds.Contains(r.Id)).ToListAsync();
 
             using var tx = await _db.Database.BeginTransactionAsync();
             try
             {
-                // Remove existing roles that are not in the new list
-                var toRemove = user.UserRoles.Where(ur => !dto.RoleIds.Contains(ur.RoleId)).ToList();
-                if (toRemove.Any())
-                {
-                    _db.UserRoles.RemoveRange(toRemove);
-                }
+                var toRemove = user.UserRoles.Where(ur => !roleIds.Contains(ur.RoleId)).ToList();
+                if (toRemove.Any()) _db.UserRoles.RemoveRange(toRemove);
 
-                // Add missing roles
                 foreach (var r in roles)
                 {
                     if (!user.UserRoles.Any(ur => ur.RoleId == r.Id))
-                    {
                         _db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = r.Id });
-                    }
                 }
 
                 await _db.SaveChangesAsync();
@@ -230,40 +243,46 @@ namespace E_Commerce_Admin_Panel.Controllers
             }
         }
 
-        // GET: api/UserManagement/{id}/roles
         [HttpGet("{id:long}/roles")]
-        public async Task<IActionResult> GetUserRoles(long id)
+        [HasPermission("User.View")]
+        public async Task<ActionResult<IEnumerable<RoleBriefDto>>> GetUserRoles(long id)
         {
             var user = await _db.Users.Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(u => u.Id == id && !u.IsDelete);
 
             if (user == null) return NotFound();
 
-            return Ok(user.UserRoles.Select(ur => new { ur.RoleId, ur.Role.Name }));
+            var roles = user.UserRoles.Select(ur => new RoleBriefDto { RoleId = ur.RoleId, Name = ur.Role?.Name }).ToList();
+            return Ok(roles);
         }
 
-        // GET: api/UserManagement/{id}
         [HttpGet("profile")]
         [Authorize]
-        public async Task<IActionResult> profile()
+        public async Task<ActionResult<UserDto>> Profile()
         {
-            string name = User.Identity.Name;
+            var name = User.Identity?.Name;
+            if (string.IsNullOrEmpty(name)) return Forbid();
+
             var user = await _db.Users
+                .AsNoTracking()
                 .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
                 .FirstOrDefaultAsync(u => u.UserName == name && !u.IsDelete);
 
             if (user == null) return NotFound();
 
-            return Ok(new
+            var dto = new UserDto
             {
-                user.Id,
-                user.UserName,
-                user.Email,
-                user.IsActive,
-                Roles = user.UserRoles.Select(ur => new { ur.RoleId, ur.Role.Name })
-            });
-        }
+                Id = user.Id,
+                UserName = user.UserName,
+                Email = user.Email,
+                IsActive = user.IsActive,
+                Roles = user.UserRoles.Select(ur => new RoleBriefDto { RoleId = ur.RoleId, Name = ur.Role?.Name }),
+                CreatedBy = user.CreatedBy,
+                CreatedAt = user.CreatedAt
+            };
 
+            return Ok(dto);
+        }
     }
 }
-

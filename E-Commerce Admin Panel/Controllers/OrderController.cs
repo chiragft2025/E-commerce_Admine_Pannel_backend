@@ -1,8 +1,8 @@
 ﻿using E_Commerce_Admin_Panel.Authorization;
+using E_Commerce_Admin_Panel.Dtos;
 using E_Commerce_Admin_Panel.Dtos.Order;
 using InventoryAdmin.Domain.Entities;
 using InventoryAdmin.Infrastructure.Data;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,10 +17,10 @@ namespace E_Commerce_Admin_Panel.Controllers
 
         [HttpGet]
         [HasPermission("Order.View")]
-        public async Task<IActionResult> GetAll(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10,
-        [FromQuery] string? search = null)
+        public async Task<ActionResult<PagedResult<OrderListItemDto>>> GetAll(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string? search = null)
         {
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 10;
@@ -29,44 +29,25 @@ namespace E_Commerce_Admin_Panel.Controllers
             var q = _db.Orders
                 .Include(o => o.Customer)
                 .AsNoTracking()
-                .Where(o => !o.IsDelete);  // If you track soft delete
+                .Where(o => !o.IsDelete);
 
-            // --------------------------
-            // OWNERSHIP FILTER (IMPORTANT)
-            // --------------------------
             if (!IsAdmin())
             {
                 var currentUser = GetCurrentUsername();
                 if (string.IsNullOrEmpty(currentUser))
                     return Forbid();
 
-                // If your Order has a CreatedBy (string username)
                 q = q.Where(o => o.CreatedBy == currentUser);
-
-                // ---- If Order has numeric CreatedById, use this instead ----
-                /*
-                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(idClaim) || !long.TryParse(idClaim, out var currId))
-                    return Forbid();
-                q = q.Where(o => o.CreatedById == currId);
-                */
             }
 
-            // --------------------------
-            // SEARCH FILTER
-            // --------------------------
             if (!string.IsNullOrWhiteSpace(search))
             {
-                search = search.Trim().ToLower();
+                var s = search.Trim().ToLower();
                 q = q.Where(o =>
-                    o.Id.ToString().Contains(search) ||
-                    o.Customer.FullName.ToLower().Contains(search)
-                );
+                    o.Id.ToString().Contains(s) ||
+                    o.Customer.FullName.ToLower().Contains(s));
             }
 
-            // --------------------------
-            // SORT + PAGING
-            // --------------------------
             q = q.OrderByDescending(o => o.PlacedAt);
 
             var total = await q.CountAsync();
@@ -74,95 +55,92 @@ namespace E_Commerce_Admin_Panel.Controllers
             var items = await q
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(o => new
+                .Select(o => new OrderListItemDto
                 {
-                    o.Id,
-                    o.PlacedAt,
-                    o.Status,
-                    o.TotalAmount,
-                    Customer = new
+                    Id = o.Id,
+                    PlacedAt = o.PlacedAt,
+                    Status = o.Status.ToString(),
+                    TotalAmount = o.TotalAmount,
+                    Customer = new CustomerBriefDto
                     {
-                        o.Customer.Id,
-                        o.Customer.FullName
+                        Id = o.Customer.Id,
+                        FullName = o.Customer.FullName
                     },
-                    o.CreatedBy,
-                    o.CreatedAt
+                    CreatedBy = o.CreatedBy,
+                    CreatedAt = o.CreatedAt
                 })
                 .ToListAsync();
 
-            return Ok(new { total, page, pageSize, items });
+            var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+            var result = new PagedResult<OrderListItemDto>
+            {
+                Items = items,
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = total,
+                TotalPages = totalPages
+            };
+
+            return Ok(result);
         }
 
         [HttpGet("{id:long}")]
         [HasPermission("Order.View")]
-        public async Task<IActionResult> Get(long id)
+        public async Task<ActionResult<OrderDto>> Get(long id)
         {
             var order = await _db.Orders
                 .Include(o => o.Items).ThenInclude(i => i.Product)
                 .Include(o => o.Customer)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(o => o.Id == id && !o.IsDelete);
 
             if (order == null)
                 return NotFound();
 
-            // ---------------------------
-            // OWNERSHIP CHECK
-            // ---------------------------
             if (!IsAdmin())
             {
                 var currentUser = GetCurrentUsername();
                 if (string.IsNullOrEmpty(currentUser))
                     return Forbid();
 
-                // If CreatedBy is a STRING (username)
                 if (!string.Equals(order.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
                     return Forbid();
-
-                // ---- If CreatedBy is NUMERIC ID, use this instead ----
-                /*
-                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(idClaim) || !long.TryParse(idClaim, out var currId))
-                    return Forbid();
-
-                if (order.CreatedById != currId)
-                    return Forbid();
-                */
             }
 
-            // Return a safe / shaped DTO (recommended)
-            return Ok(new
+            var dto = new OrderDto
             {
-                order.Id,
-                order.PlacedAt,
-                order.Status,
-                order.TotalAmount,
-                Customer = new
+                Id = order.Id,
+                PlacedAt = order.PlacedAt,
+                Status = order.Status.ToString(),
+                TotalAmount = order.TotalAmount,
+                Customer = new CustomerDetailDto
                 {
-                    order.Customer.Id,
-                    order.Customer.FullName,
-                    order.Customer.Email
+                    Id = order.Customer.Id,
+                    FullName = order.Customer.FullName,
+                    Email = order.Customer.Email
                 },
-                Items = order.Items.Select(i => new
+                Items = order.Items.Select(i => new OrderItemDto
                 {
-                    i.Id,
-                    i.Quantity,
-                    i.UnitPrice,
-                    Product = new
+                    Id = i.Id,
+                    Quantity = i.Quantity,
+                    UnitPrice = i.UnitPrice,
+                    Product = new ProductBriefDto
                     {
-                        i.Product.Id,
-                        i.Product.Name,
-                        i.Product.SKU
+                        Id = i.Product.Id,
+                        Name = i.Product.Name,
+                        SKU = i.Product.SKU
                     }
-                }),
-                order.CreatedBy,
-                order.CreatedAt
-            });
-        }
+                }).ToList(),
+                CreatedBy = order.CreatedBy,
+                CreatedAt = order.CreatedAt
+            };
 
+            return Ok(dto);
+        }
 
         [HttpPost]
         [HasPermission("Order.Manage")]
-        public async Task<IActionResult> Create([FromBody] CreateOrderRequest dto)
+        public async Task<ActionResult<CreateOrderResponseDto>> Create([FromBody] CreateOrderRequest dto)
         {
             var customer = await _db.Customers.FindAsync(dto.CustomerId);
             if (customer == null) return BadRequest("Invalid customer");
@@ -183,13 +161,13 @@ namespace E_Commerce_Admin_Panel.Controllers
                 };
 
                 _db.Orders.Add(order);
-                await _db.SaveChangesAsync(); // get order.Id
+                await _db.SaveChangesAsync(); // gets order.Id
 
                 decimal total = 0m;
                 foreach (var it in dto.Items)
                 {
-                    var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == it.ProductId && p.IsActive);
-                    if (product == null) throw new Exception($"Product {it.ProductId} not found");
+                    var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == it.Id && p.IsActive);
+                    if (product == null) throw new Exception($"Product {it.Id} not found");
                     if (product.Stock < it.Quantity) throw new Exception($"Insufficient stock for product {product.Name}");
 
                     var unitPrice = product.Price;
@@ -214,11 +192,18 @@ namespace E_Commerce_Admin_Panel.Controllers
                 await _db.SaveChangesAsync();
                 await tx.CommitAsync();
 
-                return CreatedAtAction(nameof(Get), new { id = order.Id }, new { order.Id, order.TotalAmount });
+                var response = new CreateOrderResponseDto
+                {
+                    Id = order.Id,
+                    TotalAmount = order.TotalAmount
+                };
+
+                return CreatedAtAction(nameof(Get), new { id = order.Id }, response);
             }
             catch (Exception ex)
             {
                 await tx.RollbackAsync();
+                // Consider returning a structured error object; keeping your pattern here
                 return BadRequest(new { message = ex.Message });
             }
         }
@@ -233,7 +218,6 @@ namespace E_Commerce_Admin_Panel.Controllers
             if (order.Status == OrderStatus.Shipped || order.Status == OrderStatus.Delivered)
                 return BadRequest("Cannot cancel an order that is shipped or delivered");
 
-            // revert stock
             foreach (var item in order.Items)
             {
                 var product = await _db.Products.FindAsync(item.ProductId);
@@ -251,6 +235,5 @@ namespace E_Commerce_Admin_Panel.Controllers
             await _db.SaveChangesAsync();
             return NoContent();
         }
-
     }
 }

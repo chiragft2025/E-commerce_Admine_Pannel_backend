@@ -2,7 +2,6 @@
 using E_Commerce_Admin_Panel.Dtos.Product;
 using InventoryAdmin.Domain.Entities;
 using InventoryAdmin.Infrastructure.Data;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,47 +14,35 @@ namespace E_Commerce_Admin_Panel.Controllers
         private readonly ApplicationDbContext _db;
         public ProductsController(ApplicationDbContext db) => _db = db;
 
-        // Simple helper to check permission claims (permission claims are named "permission")
-        // GET: api/products?page=1&pageSize=10&categoryId=1&search=term
         [HttpGet]
         [HasPermission("Product.View")]
-        public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 10,
-       [FromQuery] long? categoryId = null, [FromQuery] string? search = null)
+        public async Task<ActionResult<E_Commerce_Admin_Panel.Dtos.PagedResult<ProductListItemDto>>> GetAll(
+            [FromQuery] int page = 1, [FromQuery] int pageSize = 10,
+            [FromQuery] long? categoryId = null, [FromQuery] string? search = null)
         {
             if (page < 1) page = 1;
             if (pageSize < 1 || pageSize > 200) pageSize = 10;
 
-            // Base query (only active & not deleted)
             var query = _db.Products
                 .AsNoTracking()
                 .Include(p => p.Category)
                 .Include(p => p.ProductTags).ThenInclude(pt => pt.Tag)
                 .Where(p => p.IsActive && !p.IsDelete);
 
-            // Ownership filter: non-admins only see their own products
             if (!IsAdmin())
             {
                 var currentUser = GetCurrentUsername();
                 if (string.IsNullOrEmpty(currentUser))
-                    return Forbid(); // or Unauthorized()
-
-                // If CreatedBy is a string username:
-                query = query.Where(p => p.CreatedBy == currentUser);
-
-                // If CreatedBy is numeric ID, use the alternative below (comment out above):
-                /*
-                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(idClaim) || !long.TryParse(idClaim, out var currId))
                     return Forbid();
-                query = query.Where(p => p.CreatedById == currId); // adjust field name/type accordingly
-                */
+
+                query = query.Where(p => p.CreatedBy == currentUser);
             }
 
             if (categoryId.HasValue) query = query.Where(p => p.CategoryId == categoryId.Value);
             if (!string.IsNullOrWhiteSpace(search))
             {
-                var searchTrim = search.Trim();
-                query = query.Where(p => p.Name.Contains(searchTrim));
+                var s = search.Trim();
+                query = query.Where(p => p.Name.Contains(s));
             }
 
             var total = await query.CountAsync();
@@ -64,77 +51,79 @@ namespace E_Commerce_Admin_Panel.Controllers
                 .OrderBy(p => p.Name)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(p => new
+                .Select(p => new ProductListItemDto
                 {
-                    p.Id,
-                    p.Name,
-                    p.SKU,
-                    p.Price,
-                    p.Stock,
-                    p.IsActive,
-                    Category = p.Category == null ? null : new { p.Category.Id, p.Category.Title },
-                    Tags = p.ProductTags.Select(pt => new { pt.TagId, pt.Tag.Name }),
-                    p.CreatedBy,
-                    p.CreatedAt
+                    Id = p.Id,
+                    Name = p.Name,
+                    SKU = p.SKU,
+                    Price = p.Price,
+                    Stock = p.Stock,
+                    IsActive = p.IsActive,
+                    Category = p.Category == null ? null : new CategoryBriefDto { Id = p.Category.Id, Title = p.Category.Title },
+                    Tags = p.ProductTags.Select(pt => new TagDto { TagId = pt.TagId, Name = pt.Tag.Name }).ToList(),
+                    CreatedBy = p.CreatedBy,
+                    CreatedAt = p.CreatedAt
                 })
                 .ToListAsync();
 
-            return Ok(new { total, page, pageSize, items });
+            var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+            var result = new E_Commerce_Admin_Panel.Dtos.PagedResult<ProductListItemDto>
+            {
+                Items = items,
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = total,
+                TotalPages = totalPages
+            };
+
+            return Ok(result);
         }
 
         [HttpGet("{id:long}")]
         [HasPermission("Product.View")]
-        public async Task<IActionResult> Get(long id)
+        public async Task<ActionResult<ProductDto>> Get(long id)
         {
             var p = await _db.Products
                 .Include(x => x.Category)
                 .Include(x => x.ProductTags).ThenInclude(pt => pt.Tag)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
 
             if (p == null) return NotFound();
 
-            // Ownership check: admins can view any product; non-admins only their own
             if (!IsAdmin())
             {
                 var currentUser = GetCurrentUsername();
                 if (string.IsNullOrEmpty(currentUser))
                     return Forbid();
 
-                // If CreatedBy is stored as a string username:
                 if (!string.Equals(p.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
                     return Forbid();
-
-                // --- If you use numeric user IDs for CreatedBy instead ---
-                // Comment out the string check above and use this block if CreatedBy is numeric:
-                /*
-                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(idClaim) || !long.TryParse(idClaim, out var currId))
-                    return Forbid();
-
-                if (p.CreatedById != currId) // adjust property name/type accordingly
-                    return Forbid();
-                */
             }
 
-            return Ok(new
+            var dto = new ProductDto
             {
-                p.Id,
-                p.Name,
-                p.SKU,
-                p.Description,
-                p.Price,
-                p.Stock,
-                p.IsActive,
-                Category = p.Category == null ? null : new { p.Category.Id, p.Category.Title },
-                Tags = p.ProductTags.Select(pt => new { pt.TagId, pt.Tag.Name }),
-                p.CreatedBy,   // optional: include for admin or auditing
-                p.CreatedAt     // optional
-            });
+                Id = p.Id,
+                Name = p.Name,
+                SKU = p.SKU,
+                Description = p.Description,
+                Price = p.Price,
+                Stock = p.Stock,
+                IsActive = p.IsActive,
+                Category = p.Category == null ? null : new CategoryBriefDto { Id = p.Category.Id, Title = p.Category.Title },
+                Tags = p.ProductTags.Select(pt => new TagDto { TagId = pt.TagId, Name = pt.Tag.Name }).ToList(),
+                CreatedBy = p.CreatedBy,
+                CreatedAt = p.CreatedAt,
+                LastModifiedBy = p.LastModifiedBy,
+                LastModifiedAt = p.LastModifiedAt
+            };
+
+            return Ok(dto);
         }
 
         [HttpPost]
         [HasPermission("Product.Create")]
-        public async Task<IActionResult> Create([FromBody] CreateProductRequest dto)
+        public async Task<ActionResult<ProductDto>> Create([FromBody] CreateProductRequest dto)
         {
             if (dto == null) return BadRequest("Payload required");
             if (string.IsNullOrWhiteSpace(dto.Name)) return BadRequest("Name is required");
@@ -145,54 +134,18 @@ namespace E_Commerce_Admin_Panel.Controllers
             if (category == null) return BadRequest("Invalid category id");
 
             var nameToCheck = dto.Name.Trim();
-            var nameExists = await _db.Products
-                .AnyAsync(p => p.Name.ToLower() == nameToCheck.ToLower());
-            if (nameExists)
-                return BadRequest("Product name already exists");
+            var nameExists = await _db.Products.AnyAsync(p => p.Name.ToLower() == nameToCheck.ToLower());
+            if (nameExists) return BadRequest("Product name already exists");
 
-            // --- SAFE: extract incoming tag names regardless of concrete DTO type ---
-            List<string> incomingTagNames;
-            if (dto.Tags == null)
+            // Normalize tags (same logic as before) — produce HashSet<string> uniqueTagNames
+            List<string> incomingTagNames = new();
+            if (dto.Tags != null)
             {
-                incomingTagNames = new List<string>();
-            }
-            else if (dto.Tags is IEnumerable<ProductTagDto> tagDtoEnumerable) // adjust type name if needed
-            {
-                incomingTagNames = tagDtoEnumerable
+                incomingTagNames = dto.Tags
                     .Select(x => x?.Name?.Trim())
                     .Where(n => !string.IsNullOrWhiteSpace(n))
                     .ToList();
             }
-            else if (dto.Tags is IEnumerable<ProductTagDto> productTagDtoEnumerable) // adjust type name if needed
-            {
-                incomingTagNames = productTagDtoEnumerable
-                    .Select(x => x?.Name?.Trim())
-                    .Where(n => !string.IsNullOrWhiteSpace(n))
-                    .ToList();
-            }
-            else
-            {
-                // fallback: attempt to read name via weakly-typed route (handles unexpected shapes)
-                incomingTagNames = (dto.Tags as IEnumerable<object> ?? Enumerable.Empty<object>())
-                    .Select(x =>
-                    {
-                        try
-                        {
-                            // dynamic access — safe inside try/catch
-                            var dyn = x as dynamic;
-                            string nm = (dyn?.Name ?? (dyn?.name ?? null))?.ToString();
-                            return nm?.Trim();
-                        }
-                        catch
-                        {
-                            return null;
-                        }
-                    })
-                    .Where(n => !string.IsNullOrWhiteSpace(n))
-                    .ToList();
-            }
-
-            // dedupe case-insensitively
             var uniqueTagNames = new HashSet<string>(incomingTagNames, StringComparer.OrdinalIgnoreCase);
 
             using var tx = await _db.Database.BeginTransactionAsync();
@@ -214,12 +167,10 @@ namespace E_Commerce_Admin_Panel.Controllers
                 _db.Products.Add(product);
                 await _db.SaveChangesAsync(); // obtain product.Id
 
-                // Handle tags if provided
                 if (uniqueTagNames.Count > 0)
                 {
                     var lowerNames = uniqueTagNames.Select(n => n.ToLowerInvariant()).ToList();
 
-                    // Fetch existing tags matching any of these names (case-insensitive)
                     var existingTags = await _db.Tags
                         .Where(t => !t.IsDelete && lowerNames.Contains(t.Name.ToLower()))
                         .ToListAsync();
@@ -228,8 +179,6 @@ namespace E_Commerce_Admin_Panel.Controllers
                         .ToDictionary(t => t.Name.ToLowerInvariant(), t => t, StringComparer.OrdinalIgnoreCase);
 
                     var tagsToAdd = new List<Tag>();
-
-                    // Create new Tag entities for missing names
                     foreach (var name in uniqueTagNames)
                     {
                         var nameLower = name.ToLowerInvariant();
@@ -242,22 +191,20 @@ namespace E_Commerce_Admin_Panel.Controllers
                                 CreatedBy = product.CreatedBy
                             };
                             tagsToAdd.Add(newTag);
-                            existingByLower[nameLower] = newTag; // include in lookup so joins below work
+                            existingByLower[nameLower] = newTag;
                         }
                     }
 
                     if (tagsToAdd.Count > 0)
                     {
                         _db.Tags.AddRange(tagsToAdd);
-                        await _db.SaveChangesAsync(); // so newTag.Id values are populated
+                        await _db.SaveChangesAsync();
                     }
 
-                    // Build ProductTag join records for all tags (existing + newly created)
                     var productTags = new List<ProductTag>();
                     foreach (var kv in existingByLower)
                     {
                         var tagEntity = kv.Value;
-                        // avoid duplicate join if already exists
                         var existsJoin = await _db.ProductTags.FindAsync(product.Id, tagEntity.Id);
                         if (existsJoin == null)
                         {
@@ -274,16 +221,30 @@ namespace E_Commerce_Admin_Panel.Controllers
 
                 await tx.CommitAsync();
 
-                return CreatedAtAction(nameof(Get), new { id = product.Id }, new { product.Id, product.Name, product.SKU });
+                // Build DTO to return (do not return EF entity)
+                var createdDto = new ProductDto
+                {
+                    Id = product.Id,
+                    Name = product.Name,
+                    SKU = product.SKU,
+                    Description = product.Description,
+                    Price = product.Price,
+                    Stock = product.Stock,
+                    IsActive = product.IsActive,
+                    Category = new CategoryBriefDto { Id = category.Id, Title = category.Title },
+                    Tags = uniqueTagNames.Select((n, i) => new TagDto { TagId = 0, Name = n }).ToList(), // TagId may be 0 for newly created; clients usually re-fetch full resource
+                    CreatedBy = product.CreatedBy,
+                    CreatedAt = product.CreatedAt
+                };
+
+                return CreatedAtAction(nameof(Get), new { id = product.Id }, createdDto);
             }
             catch (Exception ex)
             {
                 await tx.RollbackAsync();
-                // Consider logging the exception here
                 return StatusCode(500, new { message = "Failed to create product", detail = ex.Message });
             }
         }
-
 
         [HttpPut("{id:long}")]
         [HasPermission("Product.Edit")]
@@ -295,14 +256,12 @@ namespace E_Commerce_Admin_Panel.Controllers
 
             if (p == null) return NotFound();
 
-            // Basic validation
             if (dto.Price.HasValue && dto.Price < 0) return BadRequest("Price must be >= 0");
             if (dto.Stock.HasValue && dto.Stock < 0) return BadRequest("Stock must be >= 0");
 
             using var tx = await _db.Database.BeginTransactionAsync();
             try
             {
-                // Update primitive fields
                 p.Name = dto.Name ?? p.Name;
                 p.SKU = dto.SKU ?? p.SKU;
                 p.Description = dto.Description ?? p.Description;
@@ -320,19 +279,11 @@ namespace E_Commerce_Admin_Panel.Controllers
                 p.LastModifiedAt = DateTimeOffset.UtcNow;
                 p.LastModifiedBy = User.Identity?.Name ?? p.LastModifiedBy;
 
-                // -----------------------------
-                // TAG UPDATE LOGIC (REPLACE ALL)
-                // -----------------------------
                 if (dto.Tags != null)
                 {
-                    // Step 1: Remove ALL existing product-tag links
                     var existingLinks = p.ProductTags.ToList();
-                    if (existingLinks.Count > 0)
-                    {
-                        _db.ProductTags.RemoveRange(existingLinks);
-                    }
+                    if (existingLinks.Count > 0) _db.ProductTags.RemoveRange(existingLinks);
 
-                    // Step 2: Normalize incoming tag names
                     var incoming = dto.Tags
                         .Select(x => x?.Name?.Trim())
                         .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -343,7 +294,6 @@ namespace E_Commerce_Admin_Panel.Controllers
                     {
                         var lowerNames = incoming.Select(n => n.ToLowerInvariant()).ToList();
 
-                        // Step 3: Query DB for all matching tags in one call
                         var existingTags = await _db.Tags
                             .Where(t => !t.IsDelete && lowerNames.Contains(t.Name.ToLower()))
                             .ToListAsync();
@@ -355,8 +305,6 @@ namespace E_Commerce_Admin_Panel.Controllers
                         );
 
                         var tagsToAdd = new List<Tag>();
-
-                        // Step 4: Create missing tags
                         foreach (var name in incoming)
                         {
                             var lower = name.ToLowerInvariant();
@@ -368,26 +316,19 @@ namespace E_Commerce_Admin_Panel.Controllers
                                     CreatedAt = DateTimeOffset.UtcNow,
                                     CreatedBy = p.LastModifiedBy ?? p.CreatedBy
                                 };
-
                                 tagsToAdd.Add(newTag);
                                 existingByLower[lower] = newTag;
                             }
                         }
 
-                        // Step 5: Bulk insert new tags
                         if (tagsToAdd.Count > 0)
                         {
                             _db.Tags.AddRange(tagsToAdd);
-                            await _db.SaveChangesAsync(); // ensures new tag IDs are created
+                            await _db.SaveChangesAsync();
                         }
 
-                        // Step 6: Bulk attach product-tag relationships
                         var productTags = existingByLower.Values
-                            .Select(tag => new ProductTag
-                            {
-                                ProductId = p.Id,
-                                TagId = tag.Id
-                            })
+                            .Select(tag => new ProductTag { ProductId = p.Id, TagId = tag.Id })
                             .ToList();
 
                         _db.ProductTags.AddRange(productTags);
@@ -413,15 +354,12 @@ namespace E_Commerce_Admin_Panel.Controllers
             var p = await _db.Products.FindAsync(id);
             if (p == null) return NotFound();
 
-            // check usage in any order item
             var isUsed = await _db.OrderItems.AnyAsync(oi => oi.ProductId == id);
             if (isUsed)
             {
-                // return an error the frontend can display
                 return Conflict(new { message = "Cannot delete product because it is referenced by existing orders." });
             }
 
-            // soft delete
             p.IsDelete = true;
             p.LastModifiedAt = DateTimeOffset.UtcNow;
             p.LastModifiedBy = User.Identity?.Name ?? p.LastModifiedBy;
