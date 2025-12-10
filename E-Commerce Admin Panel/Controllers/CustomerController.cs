@@ -10,20 +10,18 @@ namespace E_Commerce_Admin_Panel.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class CustomersController : ControllerBase
+    public class CustomersController : BaseApiController
     {
         private readonly ApplicationDbContext _db;
         public CustomersController(ApplicationDbContext db) => _db = db;
 
-        private bool UserHasPermission(string permission) =>
-            User.Claims.Any(c => c.Type == "permission" && c.Value == permission);
 
         [HttpGet]
         [HasPermission("Customer.View")]
         public async Task<IActionResult> GetAll(
-     [FromQuery] int page = 1,
-     [FromQuery] int pageSize = 10,
-     [FromQuery] string? search = null)
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? search = null)
         {
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 10;
@@ -89,35 +87,6 @@ namespace E_Commerce_Admin_Panel.Controllers
                 items
             });
         }
-
-        private string? GetCurrentUsername()
-        {
-            if (User?.Identity?.IsAuthenticated != true) return null;
-
-            if (!string.IsNullOrEmpty(User.Identity?.Name))
-                return User.Identity.Name;
-
-            // common claim names
-            return User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
-                   ?? User.FindFirst("name")?.Value
-                   ?? User.FindFirst("preferred_username")?.Value
-                   ?? User.FindFirst("username")?.Value;
-        }
-
-        private bool IsAdmin()
-        {
-            if (User == null) return false;
-
-            // common role checks
-            if (User.IsInRole("Admin")) return true;
-
-            var roles = User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(c => c.Value)
-                        .Concat(User.FindAll("role").Select(c => c.Value));
-
-            return roles.Any(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase));
-        }
-
-
 
         [HttpGet("{id:long}")]
         [HasPermission("Customer.View")]

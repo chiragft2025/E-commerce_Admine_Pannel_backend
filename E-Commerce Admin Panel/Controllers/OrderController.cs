@@ -10,20 +10,17 @@ namespace E_Commerce_Admin_Panel.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class OrdersController : ControllerBase
+    public class OrdersController : BaseApiController
     {
         private readonly ApplicationDbContext _db;
         public OrdersController(ApplicationDbContext db) => _db = db;
 
-        private bool UserHasPermission(string permission) =>
-            User.Claims.Any(c => c.Type == "permission" && c.Value == permission);
-
         [HttpGet]
         [HasPermission("Order.View")]
         public async Task<IActionResult> GetAll(
-    [FromQuery] int page = 1,
-    [FromQuery] int pageSize = 10,
-    [FromQuery] string? search = null)
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? search = null)
         {
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 10;
@@ -253,30 +250,6 @@ namespace E_Commerce_Admin_Panel.Controllers
 
             await _db.SaveChangesAsync();
             return NoContent();
-        }
-
-        private string? GetCurrentUsername()
-        {
-            if (User?.Identity?.IsAuthenticated != true) return null;
-
-            if (!string.IsNullOrEmpty(User.Identity?.Name))
-                return User.Identity.Name;
-
-            return User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
-                   ?? User.FindFirst("username")?.Value
-                   ?? User.FindFirst("preferred_username")?.Value;
-        }
-
-        private bool IsAdmin()
-        {
-            if (User == null) return false;
-
-            if (User.IsInRole("Admin")) return true;
-
-            var roles = User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(c => c.Value)
-                        .Concat(User.FindAll("role").Select(c => c.Value));
-
-            return roles.Any(r => r.Equals("Admin", StringComparison.OrdinalIgnoreCase));
         }
 
     }

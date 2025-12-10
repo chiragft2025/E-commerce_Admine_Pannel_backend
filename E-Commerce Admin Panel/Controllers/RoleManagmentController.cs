@@ -1,10 +1,10 @@
 ﻿using E_Commerce_Admin_Panel.Authorization;
 using InventoryAdmin.Domain.Entities;    // adjust to your domain namespace
 using InventoryAdmin.Infrastructure.Data; // adjust if needed
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Threading.Tasks;
+using E_Commerce_Admin_Panel.Dtos.Role;
+
 
 namespace E_Commerce_Admin_Panel.Controllers
 {
@@ -19,10 +19,6 @@ namespace E_Commerce_Admin_Panel.Controllers
         {
             _db = db;
         }
-
-        // Helper permission check (optional)
-        private bool UserHasPermission(string permission) =>
-            User?.Claims.Any(c => c.Type == "permission" && c.Value == permission) ?? false;
 
         // GET: api/RoleManagement
         [HttpGet]
@@ -233,46 +229,4 @@ namespace E_Commerce_Admin_Panel.Controllers
         }
     }
 
-    #region DTOs
-
-    public class CreateRoleRequest
-    {
-        public string Name { get; set; } = "";
-        public string? Description { get; set; }
-        public bool? IsActive { get; set; }
-        public List<long>? PermissionIds { get; set; }
-    }
-
-    public class UpdateRoleRequest
-    {
-        public string? Name { get; set; }
-        public string? Description { get; set; }
-        public bool? IsActive { get; set; }
-    }
-
-    public class AssignPermissionsRequest
-    {
-        public List<long> PermissionIds { get; set; } = new();
-    }
-
-    public class RoleDto
-    {
-        public long Id { get; set; }
-        public string Name { get; set; } = "";
-        public string? Description { get; set; }
-        public bool IsActive { get; set; }
-    }
-
-    public class RoleDetailDto : RoleDto
-    {
-        public List<PermissionDto> Permissions { get; set; } = new();
-    }
-
-    public class PermissionDto
-    {
-        public long Id { get; set; }
-        public string? Name { get; set; }
-    }
-
-    #endregion
 }

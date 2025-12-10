@@ -10,17 +10,12 @@ namespace E_Commerce_Admin_Panel.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class ProductsController : ControllerBase
+    public class ProductsController : BaseApiController
     {
         private readonly ApplicationDbContext _db;
         public ProductsController(ApplicationDbContext db) => _db = db;
 
         // Simple helper to check permission claims (permission claims are named "permission")
-        private bool UserHasPermission(string permission) =>
-            User?.Claims?.Any(c => string.Equals(c.Type, "permission", StringComparison.OrdinalIgnoreCase)
-                                   && string.Equals(c.Value, permission, StringComparison.OrdinalIgnoreCase))
-            ?? false;
-
         // GET: api/products?page=1&pageSize=10&categoryId=1&search=term
         [HttpGet]
         [HasPermission("Product.View")]
@@ -86,34 +81,6 @@ namespace E_Commerce_Admin_Panel.Controllers
 
             return Ok(new { total, page, pageSize, items });
         }
-
-        private string? GetCurrentUsername()
-        {
-            if (User?.Identity?.IsAuthenticated != true) return null;
-
-            if (!string.IsNullOrEmpty(User.Identity?.Name))
-                return User.Identity.Name;
-
-            // common claim names
-            return User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
-                   ?? User.FindFirst("name")?.Value
-                   ?? User.FindFirst("preferred_username")?.Value
-                   ?? User.FindFirst("username")?.Value;
-        }
-
-        private bool IsAdmin()
-        {
-            if (User == null) return false;
-
-            // common role checks
-            if (User.IsInRole("Admin")) return true;
-
-            var roles = User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(c => c.Value)
-                        .Concat(User.FindAll("role").Select(c => c.Value));
-
-            return roles.Any(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase));
-        }
-
 
         [HttpGet("{id:long}")]
         [HasPermission("Product.View")]
