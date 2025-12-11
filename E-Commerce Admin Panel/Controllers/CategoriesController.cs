@@ -113,20 +113,43 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Category.Create")]
         public async Task<ActionResult<CategoryDto>> Create([FromBody] CreateCategoryRequest dto)
         {
-            if (string.IsNullOrWhiteSpace(dto.Title))
+            // normalize input
+            var title = dto?.Title?.Trim();
+            if (string.IsNullOrWhiteSpace(title))
                 return BadRequest("Title required");
 
-            var exists = await _db.Categories
-                .AnyAsync(x => x.Title.ToLower() == dto.Title.ToLower());
+            // determine current user (same logic you used when creating the Category)
+            var username = User?.Identity?.Name ?? "system";
+
+            // normalize for case-insensitive comparison
+            var titleLower = title.ToLowerInvariant();
+            var createdByLower = (username ?? "system").ToLowerInvariant();
+            bool exists;
+            if (!IsAdmin())
+            {
+                 exists = await _db.Categories
+                .AnyAsync(x =>
+                    x.Title != null &&
+                    x.CreatedBy != null &&
+                    x.Title.ToLower() == titleLower &&
+                    x.CreatedBy.ToLower() == createdByLower);
+            }
+            else
+            {
+                 exists = await _db.Categories.AnyAsync(x => x.Title.ToLower() == dto.Title.ToLower());
+            }
+
+            // check existence only for categories created by the current user
+
 
             if (exists)
                 return BadRequest("Category title already exists");
 
             var c = new Category
             {
-                Title = dto.Title,
+                Title = title,
                 Description = dto.Description,
-                CreatedBy = User.Identity?.Name ?? "system",
+                CreatedBy = username,
                 CreatedAt = DateTimeOffset.UtcNow
             };
 

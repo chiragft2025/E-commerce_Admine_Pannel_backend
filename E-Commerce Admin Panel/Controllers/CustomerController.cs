@@ -122,33 +122,85 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("Customer.Create")]
         public async Task<ActionResult<CustomerDto>> Create([FromBody] CreateCustomerRequest dto)
         {
-            if (string.IsNullOrWhiteSpace(dto.FullName) || string.IsNullOrWhiteSpace(dto.Email))
+            // normalize & validate input
+            var fullName = dto?.FullName?.Trim();
+            var email = dto?.Email?.Trim();
+            if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(email))
                 return BadRequest("FullName and Email required");
 
-            var nameExists = await _db.Customers
-                .AnyAsync(x => x.FullName.ToLower() == dto.FullName.ToLower());
+            // current user
+            var username = User?.Identity?.Name ?? "system";
+
+            // normalized values for case-insensitive comparison
+            var fullNameLower = fullName.ToLowerInvariant();
+            var emailLower = email.ToLowerInvariant();
+            var createdByLower = (username ?? "system").ToLowerInvariant();
+
+            bool nameExists, emailExists;
+
+            if (!IsAdmin())
+            {
+                // non-admins: check only their own customers
+                nameExists = await _db.Customers
+                    .AnyAsync(x =>
+                        x.FullName != null &&
+                        x.CreatedBy != null &&
+                        x.FullName.ToLower() == fullNameLower &&
+                        x.CreatedBy.ToLower() == createdByLower);
+
+                emailExists = await _db.Customers
+                .AnyAsync(x => x.Email != null && x.Email.ToLower() == emailLower&&
+                 x.CreatedBy.ToLower() == createdByLower);
+
+            }
+            else
+            {
+                // admins: check globally for the full name
+                nameExists = await _db.Customers
+                    .AnyAsync(x =>
+                        x.FullName != null &&
+                        x.FullName.ToLower() == fullNameLower);
+
+                emailExists = await _db.Customers
+                .AnyAsync(x => x.Email != null && x.Email.ToLower() == emailLower);
+            }
 
             if (nameExists)
                 return BadRequest("Customer full name already exists");
 
-            var emailExists = await _db.Customers
-                .AnyAsync(x => x.Email.ToLower() == dto.Email.ToLower());
+             
 
             if (emailExists)
                 return BadRequest("Customer email already exists");
 
             var cust = new Customer
             {
-                FullName = dto.FullName,
-                Email = dto.Email,
-                Phone = dto.Phone,
-                Address = dto.Address,
-                CreatedBy = User.Identity?.Name ?? "system",
+                FullName = fullName,
+                Email = email,
+                Phone = dto?.Phone,
+                Address = dto?.Address,
+                CreatedBy = username,
                 CreatedAt = DateTimeOffset.UtcNow
             };
 
             _db.Customers.Add(cust);
-            await _db.SaveChangesAsync();
+
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+            {
+                // If you later add DB unique constraints (recommended) this translates DB uniqueness errors into a 409 Conflict.
+                // Provider-specific checks (SQL Server / Postgres) are better; here is a generic fallback:
+                if (ex.InnerException != null &&
+                    ex.InnerException.Message?.IndexOf("unique", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return Conflict("Customer already exists");
+                }
+
+                throw; // rethrow if not handled
+            }
 
             var resultDto = new CustomerDto
             {
@@ -163,6 +215,7 @@ namespace E_Commerce_Admin_Panel.Controllers
 
             return CreatedAtAction(nameof(Get), new { id = cust.Id }, resultDto);
         }
+
 
 
 

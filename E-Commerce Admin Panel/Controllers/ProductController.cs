@@ -126,18 +126,43 @@ namespace E_Commerce_Admin_Panel.Controllers
         public async Task<ActionResult<ProductDto>> Create([FromBody] CreateProductRequest dto)
         {
             if (dto == null) return BadRequest("Payload required");
-            if (string.IsNullOrWhiteSpace(dto.Name)) return BadRequest("Name is required");
+
+            var name = dto.Name?.Trim();
+            if (string.IsNullOrWhiteSpace(name)) return BadRequest("Name is required");
             if (dto.Price < 0) return BadRequest("Price must be >= 0");
             if (dto.Stock < 0) return BadRequest("Stock must be >= 0");
 
             var category = await _db.Categories.FindAsync(dto.CategoryId);
             if (category == null) return BadRequest("Invalid category id");
 
-            var nameToCheck = dto.Name.Trim();
-            var nameExists = await _db.Products.AnyAsync(p => p.Name.ToLower() == nameToCheck.ToLower());
+            // current user
+            var username = User?.Identity?.Name ?? "system";
+
+            // normalized values
+            var nameLower = name.ToLowerInvariant();
+            var createdByLower = (username ?? "system").ToLowerInvariant();
+
+            bool nameExists;
+
+            // Non-admins: only check their own products; Admins: check globally
+            if (!IsAdmin())
+            {
+                nameExists = await _db.Products
+                    .AnyAsync(p =>
+                        p.Name != null &&
+                        p.CreatedBy != null &&
+                        p.Name.ToLower() == nameLower &&
+                        p.CreatedBy.ToLower() == createdByLower);
+            }
+            else
+            {
+                nameExists = await _db.Products
+                    .AnyAsync(p => p.Name != null && p.Name.ToLower() == nameLower);
+            }
+
             if (nameExists) return BadRequest("Product name already exists");
 
-            // Normalize tags (same logic as before) — produce HashSet<string> uniqueTagNames
+            // Normalize tags: keep original casing but dedupe case-insensitively
             List<string> incomingTagNames = new();
             if (dto.Tags != null)
             {
@@ -153,7 +178,7 @@ namespace E_Commerce_Admin_Panel.Controllers
             {
                 var product = new Product
                 {
-                    Name = dto.Name.Trim(),
+                    Name = name,
                     SKU = string.IsNullOrWhiteSpace(dto.SKU) ? Guid.NewGuid().ToString("N").Substring(0, 10) : dto.SKU.Trim(),
                     Description = dto.Description,
                     Price = dto.Price,
@@ -161,50 +186,56 @@ namespace E_Commerce_Admin_Panel.Controllers
                     IsActive = dto.IsActive,
                     CategoryId = dto.CategoryId,
                     CreatedAt = DateTimeOffset.UtcNow,
-                    CreatedBy = User.Identity?.Name ?? "system"
+                    CreatedBy = username
                 };
 
                 _db.Products.Add(product);
-                await _db.SaveChangesAsync(); // obtain product.Id
+                await _db.SaveChangesAsync(); // product.Id available
 
                 if (uniqueTagNames.Count > 0)
                 {
+                    // prepare lower-cased list for comparisons
                     var lowerNames = uniqueTagNames.Select(n => n.ToLowerInvariant()).ToList();
 
+                    // fetch existing tags (case-insensitive)
                     var existingTags = await _db.Tags
                         .Where(t => !t.IsDelete && lowerNames.Contains(t.Name.ToLower()))
                         .ToListAsync();
 
+                    // dictionary by lower-name -> Tag (existing or newly created)
                     var existingByLower = existingTags
                         .ToDictionary(t => t.Name.ToLowerInvariant(), t => t, StringComparer.OrdinalIgnoreCase);
 
                     var tagsToAdd = new List<Tag>();
-                    foreach (var name in uniqueTagNames)
+                    foreach (var nameCandidate in uniqueTagNames)
                     {
-                        var nameLower = name.ToLowerInvariant();
-                        if (!existingByLower.ContainsKey(nameLower))
+                        var nl = nameCandidate.ToLowerInvariant();
+                        if (!existingByLower.ContainsKey(nl))
                         {
                             var newTag = new Tag
                             {
-                                Name = name,
+                                Name = nameCandidate,
                                 CreatedAt = DateTimeOffset.UtcNow,
                                 CreatedBy = product.CreatedBy
                             };
                             tagsToAdd.Add(newTag);
-                            existingByLower[nameLower] = newTag;
+
+                            // add to dictionary so subsequent logic can find it (EF will populate Id after SaveChanges)
+                            existingByLower[nl] = newTag;
                         }
                     }
 
                     if (tagsToAdd.Count > 0)
                     {
                         _db.Tags.AddRange(tagsToAdd);
-                        await _db.SaveChangesAsync();
+                        await _db.SaveChangesAsync(); // newly added tags get their Ids
                     }
 
+                    // now create ProductTag joins for all tags in existingByLower
                     var productTags = new List<ProductTag>();
-                    foreach (var kv in existingByLower)
+                    foreach (var tagEntity in existingByLower.Values)
                     {
-                        var tagEntity = kv.Value;
+                        // after SaveChanges above, tagEntity.Id will be set for newly created tags too
                         var existsJoin = await _db.ProductTags.FindAsync(product.Id, tagEntity.Id);
                         if (existsJoin == null)
                         {
@@ -217,11 +248,27 @@ namespace E_Commerce_Admin_Panel.Controllers
                         _db.ProductTags.AddRange(productTags);
                         await _db.SaveChangesAsync();
                     }
+
+                    // refresh product's tags if you want to include them in returned DTO (optional)
                 }
 
                 await tx.CommitAsync();
 
-                // Build DTO to return (do not return EF entity)
+                // Build DTO to return (use actual tag ids/names)
+                var tagDtos = new List<TagDto>();
+                if (uniqueTagNames.Count > 0)
+                {
+                    // Re-query tags that belong to this product to be accurate
+                    var joinedTags = await _db.ProductTags
+                        .Where(pt => pt.ProductId == product.Id)
+                        .Join(_db.Tags, pt => pt.TagId, t => t.Id, (pt, t) => new { t.Id, t.Name })
+                        .ToListAsync();
+
+                    tagDtos = joinedTags
+                        .Select(t => new TagDto { TagId = t.Id, Name = t.Name })
+                        .ToList();
+                }
+
                 var createdDto = new ProductDto
                 {
                     Id = product.Id,
@@ -232,12 +279,22 @@ namespace E_Commerce_Admin_Panel.Controllers
                     Stock = product.Stock,
                     IsActive = product.IsActive,
                     Category = new CategoryBriefDto { Id = category.Id, Title = category.Title },
-                    Tags = uniqueTagNames.Select((n, i) => new TagDto { TagId = 0, Name = n }).ToList(), // TagId may be 0 for newly created; clients usually re-fetch full resource
+                    Tags = tagDtos,
                     CreatedBy = product.CreatedBy,
                     CreatedAt = product.CreatedAt
                 };
 
                 return CreatedAtAction(nameof(Get), new { id = product.Id }, createdDto);
+            }
+            catch (DbUpdateException dbEx)
+            {
+                await tx.RollbackAsync();
+
+                // provider-specific checks are better (SQL Server / Postgres), but fallback to message inspection
+                if (dbEx.InnerException != null && dbEx.InnerException.Message?.IndexOf("unique", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return Conflict("Product already exists (unique constraint)");
+
+                return StatusCode(500, new { message = "Failed to create product", detail = dbEx.Message });
             }
             catch (Exception ex)
             {
