@@ -198,6 +198,10 @@ namespace E_Commerce_Admin_Panel.Controllers
         [HasPermission("User.Delete")] // fixed permission name
         public async Task<IActionResult> Delete(long id)
         {
+            if (id==1)
+            {
+                return StatusCode(400, new { message = "You can not remove bydefault added admin user" });
+            }
             var user = await _db.Users.FindAsync(id);
             if (user == null) return NotFound();
 
