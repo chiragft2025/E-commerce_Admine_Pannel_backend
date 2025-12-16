@@ -9,7 +9,7 @@ namespace E_Commerce_Admin_Panel.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [HasPermission("Role.Manage")]
+    
     public class RoleManagementController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -60,6 +60,7 @@ namespace E_Commerce_Admin_Panel.Controllers
         }
 
         [HttpPost]
+        [HasPermission("Role.Manage")]
         public async Task<ActionResult<RoleDto>> Create([FromBody] CreateRoleRequest dto)
         {
             if (dto == null) return BadRequest("Payload required");
@@ -108,6 +109,7 @@ namespace E_Commerce_Admin_Panel.Controllers
         }
 
         [HttpPut("{id:long}")]
+        [HasPermission("Role.Manage")]
         public async Task<ActionResult<RoleDto>> Update(long id, [FromBody] UpdateRoleRequest dto)
         {
             var role = await _db.Roles.FirstOrDefaultAsync(r => r.Id == id && !r.IsDelete);
@@ -134,6 +136,7 @@ namespace E_Commerce_Admin_Panel.Controllers
         }
 
         [HttpPost("{id:long}/permissions")]
+        [HasPermission("Role.Manage")]
         public async Task<IActionResult> AssignPermissions(long id, [FromBody] AssignPermissionsRequest dto)
         {
             if (dto == null) return BadRequest("Payload required");
@@ -188,6 +191,7 @@ namespace E_Commerce_Admin_Panel.Controllers
         }
 
         [HttpDelete("{id:long}")]
+        [HasPermission("Role.Manage")]
         public async Task<IActionResult> Delete(long id)
         {
             var role = await _db.Roles.FirstOrDefaultAsync(r => r.Id == id && !r.IsDelete);

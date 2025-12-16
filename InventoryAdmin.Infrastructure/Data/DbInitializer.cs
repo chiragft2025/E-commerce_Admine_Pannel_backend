@@ -22,16 +22,19 @@ namespace InventoryAdmin.Infrastructure.Data
                 var permissions = new[]
                 {
                     new Permission { Name = "Product.View", CreatedBy = "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Product.Show", CreatedBy = "admin", CreatedAt = DateTimeOffset.UtcNow },
                     new Permission { Name = "Product.Create", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                     new Permission { Name = "Product.Edit", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                     new Permission { Name = "Product.Delete", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
 
                     new Permission { Name = "Customer.View", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Customer.show", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                      new Permission { Name = "Customer.Create", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                     new Permission { Name = "Customer.Edit", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                      new Permission { Name = "Customer.Delete", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
 
                     new Permission { Name = "Category.View", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Category.Show", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                     new Permission { Name = "Category.Edit", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                      new Permission { Name = "Category.Create", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                       new Permission { Name = "Category.Delete", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
@@ -41,11 +44,13 @@ namespace InventoryAdmin.Infrastructure.Data
 
 
                      new Permission { Name = "User.View", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                     new Permission { Name = "User.Show", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                      new Permission { Name = "User.Edit", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                      new Permission { Name = "User.Create", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                     new Permission { Name = "User.Delete", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
 
-                     new Permission { Name = "Role.Manage", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow }
+                     new Permission { Name = "Role.Manage", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                     new Permission { Name = "Role.View", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow }
                 };
 
                 context.Permissions.AddRange(permissions);
