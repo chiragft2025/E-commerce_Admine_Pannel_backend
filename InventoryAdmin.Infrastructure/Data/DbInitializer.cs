@@ -28,7 +28,7 @@ namespace InventoryAdmin.Infrastructure.Data
                     new Permission { Name = "Product.Delete", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
 
                     new Permission { Name = "Customer.View", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
-                    new Permission { Name = "Customer.show", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
+                    new Permission { Name = "Customer.Show", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                      new Permission { Name = "Customer.Create", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                     new Permission { Name = "Customer.Edit", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
                      new Permission { Name = "Customer.Delete", CreatedBy =  "admin", CreatedAt = DateTimeOffset.UtcNow },
