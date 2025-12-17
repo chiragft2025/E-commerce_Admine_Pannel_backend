@@ -235,5 +235,52 @@ namespace E_Commerce_Admin_Panel.Controllers
             await _db.SaveChangesAsync();
             return NoContent();
         }
+
+        [HttpDelete("{id:long}")]
+        [HasPermission("Order.Manage")]
+        public async Task<IActionResult> Delete(long id)
+        {
+            var order = await _db.Orders
+                .Include(o => o.Items)
+                .FirstOrDefaultAsync(o => o.Id == id && !o.IsDelete);
+
+            if (order == null)
+                return NotFound();
+
+            // Non-admin users can delete only their own orders
+            if (!IsAdmin())
+            {
+                var currentUser = GetCurrentUsername();
+                if (string.IsNullOrEmpty(currentUser))
+                    return Forbid();
+
+                if (!string.Equals(order.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
+                    return Forbid();
+            }
+
+            // Business rule: do not allow delete if shipped or delivered
+            if (order.Status == OrderStatus.Shipped || order.Status == OrderStatus.Delivered)
+                return BadRequest("Cannot delete an order that is shipped or delivered");
+
+            // Optional: restore stock when deleting
+            foreach (var item in order.Items)
+            {
+                var product = await _db.Products.FindAsync(item.ProductId);
+                if (product != null)
+                {
+                    product.Stock += item.Quantity;
+                    _db.Products.Update(product);
+                }
+            }
+
+            // Soft delete
+            order.IsDelete = true;
+            order.LastModifiedAt = DateTimeOffset.UtcNow;
+            order.LastModifiedBy = User.Identity?.Name ?? order.LastModifiedBy;
+
+            await _db.SaveChangesAsync();
+
+            return NoContent();
+        }
     }
 }

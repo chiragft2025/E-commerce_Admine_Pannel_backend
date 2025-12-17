@@ -411,12 +411,6 @@ namespace E_Commerce_Admin_Panel.Controllers
             var p = await _db.Products.FindAsync(id);
             if (p == null) return NotFound();
 
-            var isUsed = await _db.OrderItems.AnyAsync(oi => oi.ProductId == id);
-            if (isUsed)
-            {
-                return Conflict(new { message = "Cannot delete product because it is referenced by existing orders." });
-            }
-
             p.IsDelete = true;
             p.LastModifiedAt = DateTimeOffset.UtcNow;
             p.LastModifiedBy = User.Identity?.Name ?? p.LastModifiedBy;
