@@ -323,7 +323,7 @@ namespace E_Commerce_Admin_Panel.Controllers
 
             await _db.SaveChangesAsync();
 
-            return NoContent();
+            return Ok(new {message = "Passsword sucessfully change"});
         }
     }
 }

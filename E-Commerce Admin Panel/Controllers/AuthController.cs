@@ -19,15 +19,18 @@ namespace E_Commerce_Admin_Panel.Controllers
         private readonly ApplicationDbContext _db;
         private readonly ITokenService _tokenService;
         private readonly PasswordHasher<User> _passwordHasher;
+        private readonly IEmailService _emailService;
 
-        public AuthController(ApplicationDbContext db, ITokenService tokenService)
+        public AuthController(ApplicationDbContext db, ITokenService tokenService, IEmailService emailService)
         {
             _db = db;
             _tokenService = tokenService;
+            _emailService = emailService;
             _passwordHasher = new PasswordHasher<User>();
+            _emailService = emailService;
         }
 
-          // Creates a user and assigns the "Viewer" role by default
+        // Creates a user and assigns the "Viewer" role by default
         [HttpPost("register")]
         [AllowAnonymous]
         public async Task<IActionResult> Register([FromBody] RegisterRequest req)
@@ -146,5 +149,119 @@ namespace E_Commerce_Admin_Panel.Controllers
             var permissions = User.Claims.Where(c => c.Type == "permission").Select(c => c.Value).ToList();
             return Ok(new { user = username, permissions });
         }
+
+        [HttpPost("forgot-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var email = dto.Email.Trim().ToLowerInvariant();
+
+            var user = await _db.Users
+                .FirstOrDefaultAsync(u => u.Email == email && !u.IsDelete);
+
+            // prevent email enumeration
+            if (user == null)
+                return Ok();
+
+            var otp = Random.Shared.Next(100000, 999999).ToString();
+
+            var otpEntry = new PasswordResetOtp
+            {
+                UserId = user.Id,
+                OtpHash = _passwordHasher.HashPassword(user, otp),
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10),
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+
+            _db.PasswordResetOtps.Add(otpEntry);
+            await _db.SaveChangesAsync();
+
+            await _emailService.SendAsync(
+                user.Email,
+                "Password Reset OTP",
+                $"Your OTP is {otp}. It expires in 10 minutes."
+            );
+
+            return Ok();
+        }
+        [HttpPost("verify-otp")]
+        [AllowAnonymous]
+        public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpRequest dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var email = dto.Email.Trim().ToLowerInvariant();
+
+            var user = await _db.Users
+                .FirstOrDefaultAsync(u => u.Email == email && !u.IsDelete);
+
+            if (user == null)
+                return BadRequest("Invalid OTP");
+
+            var otpEntry = await _db.PasswordResetOtps
+                .Where(o => o.UserId == user.Id && !o.IsUsed && o.ExpiresAt > DateTimeOffset.UtcNow)
+                .OrderByDescending(o => o.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (otpEntry == null)
+                return BadRequest("OTP expired or invalid");
+
+            var result = _passwordHasher.VerifyHashedPassword(user, otpEntry.OtpHash, dto.Otp);
+
+            if (result == PasswordVerificationResult.Failed)
+                return BadRequest("Invalid OTP");
+
+            return Ok();
+        }
+        [HttpPost("reset-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var email = dto.Email.Trim().ToLowerInvariant();
+
+            var user = await _db.Users
+                .FirstOrDefaultAsync(u => u.Email == email && !u.IsDelete);
+
+            if (user == null)
+                return BadRequest("Invalid request");
+
+            var otpEntry = await _db.PasswordResetOtps
+                .Where(o => o.UserId == user.Id && !o.IsUsed && o.ExpiresAt > DateTimeOffset.UtcNow)
+                .OrderByDescending(o => o.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (otpEntry == null)
+                return BadRequest("OTP expired or invalid");
+
+            var result = _passwordHasher.VerifyHashedPassword(user, otpEntry.OtpHash, dto.Otp);
+            if (result == PasswordVerificationResult.Failed)
+                return BadRequest("Invalid OTP");
+
+            user.PasswordHash = _passwordHasher.HashPassword(user, dto.NewPassword);
+            otpEntry.IsUsed = true;
+
+            await _db.SaveChangesAsync();
+
+            return Ok();
+        }
+        //[HttpGet("test-email")]
+        //[AllowAnonymous]
+        //public async Task<IActionResult> TestEmail([FromServices] IEmailService emailService)
+        //{
+        //    await emailService.SendAsync(
+        //        "harshgangani2004@gmail.com",
+        //        "SMTP Test",
+        //        "If you received this email, SMTP is working."
+        //    );
+
+        //    return Ok("Email sent");
+        //}
     }
 }

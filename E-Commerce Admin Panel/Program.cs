@@ -57,6 +57,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 // Token service
 builder.Services.AddSingleton<ITokenService, TokenService>();
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 
 // Add HttpClient so BasicAuthenticationHandler can call /api/Auth/login
 builder.Services.AddHttpClient();
