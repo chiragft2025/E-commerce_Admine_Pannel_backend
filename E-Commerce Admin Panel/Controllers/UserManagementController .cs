@@ -288,5 +288,42 @@ namespace E_Commerce_Admin_Panel.Controllers
 
             return Ok(dto);
         }
+
+        [HttpPost("change-password")]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var username = User.Identity?.Name;
+            if (string.IsNullOrEmpty(username))
+                return Forbid();
+
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.UserName == username && !u.IsDelete);
+            if (user == null)
+                return NotFound();
+
+            // Verify current password
+            var verifyResult = _passwordHasher.VerifyHashedPassword(
+                user,
+                user.PasswordHash,
+                dto.CurrentPassword
+            );
+
+            if (verifyResult == PasswordVerificationResult.Failed)
+            {
+                return BadRequest(new { message = "Current password is incorrect" });
+            }
+
+            // Update password
+            user.PasswordHash = _passwordHasher.HashPassword(user, dto.NewPassword);
+            user.LastModifiedAt = DateTimeOffset.UtcNow;
+            user.LastModifiedBy = username;
+
+            await _db.SaveChangesAsync();
+
+            return NoContent();
+        }
     }
 }
